@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf8ff;
+
+  --surface: #faf8ff;
+  --surface-lowest: #ffffff;
+  --surface-low: #f2f3ff;
+  --surface-container: #eaedff;
+  --surface-high: #e2e7ff;
+  --surface-highest: #dae2fd;
+
+  --primary: #006b47;
+  --primary-container: #00875a;
+  --primary-fixed: #8df7c1;
+  --primary-fixed-dim: #71dba6;
+
+  --secondary: #49607e;
+  --secondary-container: #c4dcff;
+
+  --tertiary: #7a5800;
+  --tertiary-container: #996f00;
+  --tertiary-fixed: #ffdea4;
+  --tertiary-fixed-dim: #fbbc2c;
+
+  --on-surface: #131b2e;
+  --on-surface-variant: #3e4942;
+
+  --outline: #6e7a71;
+  --outline-variant: #bdcac0;
+
+  --inverse-surface: #283044;
+  --inverse-on-surface: #eef0ff;
+
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+
+  background: var(--background);
+  color: var(--on-surface);
+
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+
+  overscroll-behavior: none;
+}
+
+.font-title {
+  font-family: var(--font-jakarta), sans-serif;
+}
+
+.font-data {
+  font-family: var(--font-jetbrains), monospace;
+}
+
+::selection {
+  background: var(--primary-fixed);
+  color: #002113;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-low);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #9ba8a0;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(
+      rgba(0, 107, 71, 0.035) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(0, 107, 71, 0.035) 1px,
+      transparent 1px
+    );
+
+  background-size: 36px 36px;
+}
+
+.soft-shadow {
+  box-shadow:
+    0 1px 2px rgba(19, 27, 46, 0.03),
+    0 12px 35px rgba(19, 27, 46, 0.06);
+}
+
+.dashboard-shadow {
+  box-shadow:
+    0 4px 10px rgba(19, 27, 46, 0.05),
+    0 30px 70px rgba(19, 27, 46, 0.12);
+}
+
+.card-hover {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+
+  box-shadow:
+    0 5px 10px rgba(19, 27, 46, 0.04),
+    0 20px 35px rgba(19, 27, 46, 0.08);
+}
+
+.pulse-dot {
+  animation: pulse-custom 1.8s infinite;
+}
+
+@keyframes pulse-custom {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
