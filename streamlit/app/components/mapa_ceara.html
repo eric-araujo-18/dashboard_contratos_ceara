@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+<style>
+    :root {
+        --card: #ffffff;
+        --text: #131b2e;
+        --muted: #49607e;
+        --border: #d9e2ec;
+        --primary: #006b47;
+        --primary-dark: #005235;
+        --primary-light: #8df7c1;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+        color: var(--text);
+    }
+
+    body {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    #container {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    /* ---------- MAPA ---------- */
+
+    #map-card {
+        position: relative;
+        width: 100%;
+        height: 520px;
+        overflow: hidden;
+        background: transparent;
+    }
+
+    #map { width: 100%; height: 100%; }
+
+    .municipio {
+        cursor: pointer;
+        stroke: rgba(255, 255, 255, 0.95);
+        stroke-width: 0.5px;
+        transition: opacity 0.2s ease, filter 0.2s ease, stroke-width 0.2s ease;
+    }
+
+    .municipio:hover {
+        opacity: 0.88;
+        stroke: #131b2e;
+        stroke-width: 1.2px;
+        filter: drop-shadow(0 2px 3px rgba(19, 27, 46, 0.25));
+    }
+
+    .municipio.selected {
+        stroke: #131b2e;
+        stroke-width: 1.7px;
+        filter: drop-shadow(0 4px 6px rgba(19, 27, 46, 0.3));
+    }
+
+    /* ---------- LEGENDA ---------- */
+
+    #legend {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        z-index: 10;
+        width: 230px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(217, 226, 236, 0.9);
+        box-shadow: 0 8px 20px rgba(19, 27, 46, 0.06);
+    }
+
+    #legend-title {
+        margin-bottom: 7px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+    }
+
+    #legend-gradient {
+        height: 9px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #d1fae5, #6ee7b7, #10b981, #047857, #064e3b);
+    }
+
+    #legend-values {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 6px;
+        font-size: 10px;
+        color: var(--muted);
+    }
+
+    /* ---------- TOOLTIP ---------- */
+
+    .tooltip {
+        position: fixed;
+        display: none;
+        z-index: 1000;
+        min-width: 190px;
+        padding: 11px 13px;
+        border-radius: 12px;
+        pointer-events: none;
+        background: rgba(19, 27, 46, 0.96);
+        color: white;
+        font-size: 12px;
+        line-height: 1.5;
+        box-shadow: 0 12px 30px rgba(19, 27, 46, 0.25);
+    }
+
+    .tooltip strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 14px;
+    }
+
+    /* ---------- PAINEL ---------- */
+
+    #info-panel {
+        width: 100%;
+        min-height: 165px;
+        padding: 20px;
+        border-radius: 14px;
+        background: white;
+    }
+
+    .empty-state {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-height: 120px;
+    }
+
+    .empty-icon {
+        width: 52px;
+        height: 52px;
+        flex-shrink: 0;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        background: rgba(141, 247, 193, 0.35);
+        color: var(--primary);
+        font-size: 24px;
+    }
+
+    .empty-state h2 { margin: 0; font-size: 18px; }
+
+    .empty-state p {
+        margin: 5px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.5;
+    }
+
+    .panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        margin-bottom: 16px;
+    }
+
+    .panel-title h2 { margin: 0; font-size: 21px; }
+
+    .badge {
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: rgba(141, 247, 193, 0.35);
+        color: var(--primary-dark);
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .statistics-layout {
+        display: grid;
+        grid-template-columns: minmax(210px, 1.2fr) 3fr;
+        gap: 14px;
+    }
+
+    .total-card {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 110px;
+        padding: 18px;
+        border-radius: 15px;
+        background: linear-gradient(135deg, #005235 0%, #006b47 55%, #00875a 100%);
+        color: white;
+    }
+
+    .total-card .label {
+        margin-bottom: 7px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        opacity: 0.8;
+    }
+
+    .total-card .value { font-size: 22px; font-weight: 800; }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
+
+    .stat-row {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 5px;
+        min-height: 72px;
+        padding: 11px 13px;
+        border-radius: 13px;
+        background: #f7f9ff;
+        border: 1px solid #edf0f7;
+    }
+
+    .stat-label { font-size: 10px; color: var(--muted); font-weight: 600; }
+    .stat-value { font-size: 13px; color: var(--text); font-weight: 700; }
+
+    /* ---------- RESPONSIVO ---------- */
+
+    @media (max-width: 900px) {
+        #map-card { height: 460px; }
+        .statistics-layout { grid-template-columns: 1fr; }
+        .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 600px) {
+        #map-card { height: 400px; }
+        .stats-grid { grid-template-columns: 1fr; }
+        #legend { width: 200px; }
+    }
+</style>
+</head>
+
+<body>
+
+<div id="container">
+
+    <div id="map-card">
+        <div id="map"></div>
+
+        <div id="legend">
+            <div id="legend-title">Total contratado</div>
+            <div id="legend-gradient"></div>
+            <div id="legend-values">
+                <span id="legend-min">R$ 0</span>
+                <span id="legend-max"></span>
+            </div>
+        </div>
+    </div>
+
+    <div id="info-panel">
+        <div class="empty-state">
+            <div class="empty-icon">📍</div>
+            <div>
+                <h2>Selecione um município</h2>
+                <p>
+                    Clique no mapa para visualizar população, valor
+                    contratado e o resumo estatístico dos contratos.
+                </p>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div id="tooltip" class="tooltip"></div>
+
+<script>
+
+/* ====================================================
+   DADOS RECEBIDOS DO STREAMLIT
+==================================================== */
+
+const dataFromStreamlit = __DATA_FROM_STREAMLIT__;
+const describeFromStreamlit = __DESCRIBE_FROM_STREAMLIT__;
+const populacaoFromIBGE = __POPULACAO_FROM_IBGE__;
+const geojson = __GEOJSON__;
+
+
+/* ====================================================
+   FORMATADORES
+==================================================== */
+
+function formatCurrency(value) {
+    return Number(value || 0).toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: 2
+    });
+}
+
+function formatNumber(value) {
+    return Number(value || 0).toLocaleString("pt-BR", {
+        maximumFractionDigits: 2
+    });
+}
+
+function formatInteger(value) {
+    return Number(value || 0).toLocaleString("pt-BR", {
+        maximumFractionDigits: 0
+    });
+}
+
+
+/* ====================================================
+   POPULAÇÃO
+==================================================== */
+
+function getPopulacaoByFeature(feature) {
+    const codigo = String(feature?.properties?.id || "");
+    if (!codigo) return null;
+
+    const dados = populacaoFromIBGE[codigo];
+    return dados ? dados.populacao : null;
+}
+
+function getPopulacaoByMunicipio(nomeMunicipio) {
+    const feature = geojson.features.find(
+        item => item.properties.name === nomeMunicipio
+    );
+    return feature ? getPopulacaoByFeature(feature) : null;
+}
+
+
+/* ====================================================
+   PAINEL
+==================================================== */
+
+function statRow(label, value) {
+    return `
+        <div class="stat-row">
+            <span class="stat-label">${label}</span>
+            <span class="stat-value">${value}</span>
+        </div>
+    `;
+}
+
+function updateInfoPanel(nomeMunicipio) {
+
+    const info = describeFromStreamlit[nomeMunicipio];
+    const total = dataFromStreamlit[nomeMunicipio] || 0;
+    const populacao = getPopulacaoByMunicipio(nomeMunicipio);
+
+    const populacaoTexto = populacao
+        ? formatInteger(populacao)
+        : "Não encontrada";
+
+    const badge = info
+        ? `${formatNumber(info.count)} contratos`
+        : "Sem contratos";
+
+    let stats = statRow("População IBGE", populacaoTexto);
+
+    if (info) {
+        stats += statRow("Quantidade", formatNumber(info.count));
+        stats += statRow("Média", formatCurrency(info.mean));
+        stats += statRow("Mediana", formatCurrency(info["50%"]));
+        stats += statRow("Mínimo", formatCurrency(info.min));
+        stats += statRow("25%", formatCurrency(info["25%"]));
+        stats += statRow("75%", formatCurrency(info["75%"]));
+        stats += statRow("Máximo", formatCurrency(info.max));
+    }
+
+    d3.select("#info-panel").html(`
+        <div class="panel-title">
+            <h2>${nomeMunicipio}</h2>
+            <span class="badge">${badge}</span>
+        </div>
+
+        <div class="statistics-layout">
+            <div class="total-card">
+                <div class="label">Total contratado</div>
+                <div class="value">${formatCurrency(total)}</div>
+            </div>
+            <div class="stats-grid">${stats}</div>
+        </div>
+    `);
+}
+
+
+/* ====================================================
+   MAPA
+==================================================== */
+
+function renderChart() {
+
+    const width = 900;
+    const height = 520;
+
+    const tooltip = d3.select("#tooltip");
+
+    /* ---------- projeção ---------- */
+
+    const projection = d3.geoMercator().fitSize([width, height], geojson);
+    const path = d3.geoPath().projection(projection);
+
+    /* ---------- escala de cor ---------- */
+
+    const values = Object.values(dataFromStreamlit)
+        .map(Number)
+        .filter(value => !isNaN(value));
+
+    const maxValue = d3.max(values) || 1;
+
+    document.getElementById("legend-max").textContent =
+        formatCurrency(maxValue);
+
+    const colorScale = d3
+        .scaleSequential()
+        .interpolator(
+            d3.interpolateRgbBasis([
+                "#d1fae5",
+                "#6ee7b7",
+                "#10b981",
+                "#047857",
+                "#064e3b"
+            ])
+        )
+        .domain([0, maxValue]);
+
+    function fillFor(nome) {
+        const valor = Number(dataFromStreamlit[nome] || 0);
+        return valor > 0 ? colorScale(valor) : "#d7dee8";
+    }
+
+    /* ---------- svg ---------- */
+
+    const svg = d3
+        .create("svg")
+        .attr("viewBox", [0, 0, width, height])
+        .attr("width", "100%")
+        .attr("height", "100%")
+        .attr("preserveAspectRatio", "xMidYMid meet");
+
+    const g = svg.append("g");
+
+    /* ---------- zoom (roda do mouse só com Ctrl) ---------- */
+
+    const zoom = d3
+        .zoom()
+        .scaleExtent([1, 8])
+        .filter(event =>
+            event.type === "wheel" ? event.ctrlKey : !event.button
+        )
+        .on("zoom", zoomed);
+
+    svg.call(zoom);
+
+    /* ---------- municípios ---------- */
+
+    const municipios = g
+        .append("g")
+        .selectAll("path")
+        .data(geojson.features)
+        .join("path")
+        .attr("class", "municipio")
+        .attr("d", path)
+        .attr("fill", d => fillFor(d.properties.name))
+        .on("click", clicked)
+
+        .on("mouseover", function (event, d) {
+
+            const nome = d.properties.name;
+            const valor = dataFromStreamlit[nome] || 0;
+            const info = describeFromStreamlit[nome];
+            const populacao = getPopulacaoByFeature(d);
+
+            const populacaoTexto = populacao
+                ? formatInteger(populacao)
+                : "Não encontrada";
+
+            tooltip
+                .style("display", "block")
+                .html(`
+                    <strong>${nome}</strong>
+                    População: ${populacaoTexto}<br>
+                    Total: ${formatCurrency(valor)}<br>
+                    ${info
+                        ? `Contratos: ${formatNumber(info.count)}`
+                        : "Sem contratos"}
+                `);
+
+            d3.select(this).raise();
+        })
+
+        .on("mousemove", function (event) {
+            tooltip
+                .style("top", (event.clientY + 14) + "px")
+                .style("left", (event.clientX + 14) + "px");
+        })
+
+        .on("mouseleave", function () {
+            tooltip.style("display", "none");
+        });
+
+
+    /* ---------- clique / zoom no município ---------- */
+
+    function clicked(event, d) {
+
+        event.stopPropagation();
+
+        const [[x0, y0], [x1, y1]] = path.bounds(d);
+        const nome = d.properties.name;
+
+        updateInfoPanel(nome);
+
+        municipios
+            .classed("selected", item => item.properties.name === nome)
+            .transition()
+            .duration(250)
+            .attr("fill", item =>
+                item.properties.name === nome
+                    ? "#fbbc2c"
+                    : fillFor(item.properties.name)
+            );
+
+        svg
+            .transition()
+            .duration(650)
+            .call(
+                zoom.transform,
+                d3.zoomIdentity
+                    .translate(width / 2, height / 2)
+                    .scale(
+                        Math.min(
+                            7,
+                            0.88 / Math.max(
+                                (x1 - x0) / width,
+                                (y1 - y0) / height
+                            )
+                        )
+                    )
+                    .translate(-(x0 + x1) / 2, -(y0 + y1) / 2)
+            );
+    }
+
+
+    /* ---------- reset ---------- */
+
+    svg.on("click", function (event) {
+
+        if (event.target.tagName === "svg") {
+
+            municipios
+                .classed("selected", false)
+                .transition()
+                .duration(250)
+                .attr("fill", d => fillFor(d.properties.name));
+
+            svg
+                .transition()
+                .duration(600)
+                .call(zoom.transform, d3.zoomIdentity);
+        }
+    });
+
+
+    /* ---------- zoom handler ---------- */
+
+    function zoomed(event) {
+        g.attr("transform", event.transform);
+        g.attr("stroke-width", 0.75 / event.transform.k);
+    }
+
+    return svg.node();
+}
+
+
+document.getElementById("map").appendChild(renderChart());
+
+</script>
+
+</body>
+</html>
