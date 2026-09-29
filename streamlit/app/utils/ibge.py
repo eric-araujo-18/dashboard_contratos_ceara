@@ -9,6 +9,7 @@ primeira chamada de carregar_populacao().
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 
 import pandas as pd
@@ -21,10 +22,20 @@ URL_IBGE = (
     "periodos/2022/variaveis/93?localidades=N6[N3[23]]"
 )
 
+# A API do IBGE devolve os nomes como "Crateús - CE"; o PNCP e o GeoJSON
+# usam só "Crateús". Sem remover o sufixo, nenhum município casava.
+_SUFIXO_UF = re.compile(r"\s*-\s*[A-Z]{2}$")
+
 
 def normalizar_nome(nome) -> str:
-    nome = unicodedata.normalize("NFKD", " ".join(str(nome).strip().upper().split()))
+    nome = " ".join(str(nome).strip().upper().split())
+    nome = _SUFIXO_UF.sub("", nome)
+    nome = unicodedata.normalize("NFKD", nome)
     return "".join(c for c in nome if not unicodedata.combining(c))
+
+
+def _nome_sem_uf(nome: str) -> str:
+    return re.sub(r"\s*-\s*[A-Za-z]{2}$", "", str(nome).strip())
 
 
 def baixar_populacao_ibge() -> dict:
@@ -42,7 +53,7 @@ def baixar_populacao_ibge() -> dict:
                 registros.append(
                     {
                         "codigo_ibge": str(loc.get("id")),
-                        "municipio": loc["nome"],
+                        "municipio": _nome_sem_uf(loc["nome"]),
                         "municipio_normalizado": normalizar_nome(loc["nome"]),
                         "populacao": int(float(valor)),
                     }
@@ -67,11 +78,22 @@ def baixar_populacao_ibge() -> dict:
 def carregar_populacao() -> dict:
     """{NOME NORMALIZADO: {codigo_ibge, municipio, populacao}}. Vazio se indisponível."""
     if POPULACAO_JSON.exists():
-        return json.loads(POPULACAO_JSON.read_text(encoding="utf-8"))
-    try:
-        return baixar_populacao_ibge()
-    except Exception:
-        return {}
+        bruto = json.loads(POPULACAO_JSON.read_text(encoding="utf-8"))
+    else:
+        try:
+            bruto = baixar_populacao_ibge()
+        except Exception:
+            return {}
+
+    # re-normaliza as chaves: o JSON salvo por versões antigas tinha
+    # chaves como "CRATEUS - CE", que não casavam com os contratos
+    return {
+        normalizar_nome(dados.get("municipio", chave)): {
+            **dados,
+            "municipio": _nome_sem_uf(dados.get("municipio", chave)),
+        }
+        for chave, dados in bruto.items()
+    }
 
 
 def populacao_por_codigo(populacao_por_nome: dict) -> dict:

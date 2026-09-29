@@ -3,6 +3,8 @@ import FooterLink from "../ui/FooterLink";
 const STREAMLIT_URL =
   process.env.NEXT_PUBLIC_STREAMLIT_URL || "#";
 
+const GITHUB_REPO_URL = process.env.GITHUB_REPO_URL || "#";
+
 export default function Footer() {
   return (
     <footer
@@ -147,7 +149,7 @@ export default function Footer() {
               <FooterLink
                 icon="code"
                 text="Código no GitHub"
-                href="https://github.com"
+                href={GITHUB_REPO_URL}
               />
 
               <FooterLink

@@ -25,7 +25,10 @@ COLUNAS_DESCARTAR = [
     "valorAcumulado", "processo",
 ]
 
-COLUNAS_DATA = ["dataAssinatura", "dataVigenciaInicio", "dataVigenciaFim"]
+COLUNAS_DATA = ["dataAssinatura", "dataVigenciaInicio", "dataVigenciaFim", "dataPublicacaoPncp"]
+
+# esferaId do PNCP -> nome legível
+ESFERAS = {"M": "Municipal", "E": "Estadual", "F": "Federal", "D": "Distrital", "N": "Não se aplica"}
 
 
 def padronizar_texto(texto):
@@ -67,7 +70,7 @@ def tratar_contratos(df_bruto: pd.DataFrame, uf: str = "CE") -> tuple[pd.DataFra
 
     for coluna in COLUNAS_DATA:
         if coluna in df.columns:
-            df[coluna] = pd.to_datetime(df[coluna], errors="coerce")
+            df[coluna] = pd.to_datetime(df[coluna], format="ISO8601", errors="coerce")
 
     # colunas de trabalho, com nomes curtos
     df["municipio"] = _serie(df, COL_MUNICIPIO, "Não informado").fillna("Não informado").astype(str).str.strip()
@@ -76,10 +79,29 @@ def tratar_contratos(df_bruto: pd.DataFrame, uf: str = "CE") -> tuple[pd.DataFra
     df["fornecedor"] = _serie(df, "nomeRazaoSocialFornecedor", "Não informado").fillna("Não informado")
     df["valor"] = df["valorGlobal"].astype(float)
 
-    ano = pd.to_numeric(_serie(df, "anoContrato", None), errors="coerce")
-    if "dataAssinatura" in df.columns:
-        ano = ano.fillna(df["dataAssinatura"].dt.year)
+    # código IBGE do município (7 dígitos) — chave mais confiável que o nome
+    # para cruzar com a população do IBGE e com o GeoJSON (ex.: Itapajé/Itapagé)
+    codigo = pd.to_numeric(_serie(df, "unidadeOrgao.codigoIbge", None), errors="coerce")
+    df["codigoIbge"] = codigo.map(lambda v: str(int(v)) if pd.notna(v) else None)
+
+    df["esfera"] = _serie(df, "orgaoEntidade.esferaId", None).map(ESFERAS).fillna("Não informada")
+
+    # Ano do filtro = ano de PUBLICAÇÃO no PNCP, a mesma data que o download
+    # usa para o período. Não usamos `anoContrato`: ele tem erros de digitação
+    # dos órgãos (ex.: 2206, 15012026) e às vezes é o ano do processo.
+    # Contratos antigos podem ser publicados anos depois, por isso guardamos
+    # também o ano de assinatura.
+    ano_assinatura = df["dataAssinatura"].dt.year if "dataAssinatura" in df.columns else pd.Series(pd.NA, index=df.index)
+    ano = df["dataPublicacaoPncp"].dt.year if "dataPublicacaoPncp" in df.columns else pd.Series(pd.NA, index=df.index)
+    ano = ano.fillna(ano_assinatura)
     df["ano"] = ano.map(lambda v: str(int(v)) if pd.notna(v) else "N/D")
+    df["anoAssinatura"] = ano_assinatura.astype("Int64")
+
+    # assinatura depois da publicação é inconsistente (vira motivo de risco)
+    if {"dataAssinatura", "dataPublicacaoPncp"} <= set(df.columns):
+        df["assinaturaAposPublicacao"] = df["dataAssinatura"] > df["dataPublicacaoPncp"].dt.normalize()
+    else:
+        df["assinaturaAposPublicacao"] = False
 
     df = df.sort_values("municipio", kind="stable").reset_index(drop=True)
     log["linhas_finais"] = len(df)

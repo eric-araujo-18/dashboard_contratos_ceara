@@ -261,7 +261,7 @@
         <div id="map"></div>
 
         <div id="legend">
-            <div id="legend-title">Total contratado</div>
+            <div id="legend-title">Total contratado (escala log)</div>
             <div id="legend-gradient"></div>
             <div id="legend-values">
                 <span id="legend-min">R$ 0</span>
@@ -270,18 +270,7 @@
         </div>
     </div>
 
-    <div id="info-panel">
-        <div class="empty-state">
-            <div class="empty-icon">📍</div>
-            <div>
-                <h2>Selecione um município</h2>
-                <p>
-                    Clique no mapa para visualizar população, valor
-                    contratado e o resumo estatístico dos contratos.
-                </p>
-            </div>
-        </div>
-    </div>
+    <div id="info-panel"></div>
 
 </div>
 
@@ -290,13 +279,49 @@
 <script>
 
 /* ====================================================
-   DADOS RECEBIDOS DO STREAMLIT
+   COMUNICAÇÃO COM O STREAMLIT
+   Protocolo de componentes do Streamlit: o Python manda os
+   dados no evento "streamlit:render" e o mapa devolve o
+   município clicado com "streamlit:setComponentValue".
 ==================================================== */
 
-const dataFromStreamlit = __DATA_FROM_STREAMLIT__;
-const describeFromStreamlit = __DESCRIBE_FROM_STREAMLIT__;
-const populacaoFromIBGE = __POPULACAO_FROM_IBGE__;
-const geojson = __GEOJSON__;
+function enviarAoStreamlit(tipo, dados = {}) {
+    window.parent.postMessage(
+        { isStreamlitMessage: true, type: tipo, ...dados },
+        "*"
+    );
+}
+
+function ajustarAltura() {
+    enviarAoStreamlit("streamlit:setFrameHeight", {
+        height: document.body.scrollHeight + 4
+    });
+}
+
+function enviarClique(feature) {
+    enviarAoStreamlit("streamlit:setComponentValue", {
+        value: {
+            codigo: feature ? String(feature.properties.id) : null,
+            nome: feature ? feature.properties.name : null,
+            t: Date.now()  // deixa cada clique único, mesmo no mesmo município
+        },
+        dataType: "json"
+    });
+}
+
+
+/* ====================================================
+   ESTADO
+==================================================== */
+
+let dataFromStreamlit = {};
+let describeFromStreamlit = {};
+let populacaoFromIBGE = {};
+let geojson = null;
+
+let mapa = null;              // referências do SVG desenhado
+let assinaturaDados = null;   // evita redesenhar quando os dados não mudam
+let selecionadoAtual = null;  // código IBGE do município destacado
 
 
 /* ====================================================
@@ -355,6 +380,22 @@ function statRow(label, value) {
             <span class="stat-value">${value}</span>
         </div>
     `;
+}
+
+function mostrarPainelVazio() {
+    d3.select("#info-panel").html(`
+        <div class="empty-state">
+            <div class="empty-icon">📍</div>
+            <div>
+                <h2>Selecione um município</h2>
+                <p>
+                    Clique no mapa para filtrar o dashboard pelo município e ver
+                    população, valor contratado e o resumo estatístico dos contratos.
+                    Clique fora do mapa para voltar a todos.
+                </p>
+            </div>
+        </div>
+    `);
 }
 
 function updateInfoPanel(nomeMunicipio) {
@@ -422,13 +463,20 @@ function renderChart() {
         .map(Number)
         .filter(value => !isNaN(value));
 
-    const maxValue = d3.max(values) || 1;
+    const positivos = values.filter(value => value > 0);
+    const maxValue = d3.max(positivos) || 1;
+    const minValue = Math.min(d3.min(positivos) || 1, maxValue);
 
+    document.getElementById("legend-min").textContent =
+        positivos.length ? formatCurrency(minValue) : formatCurrency(0);
     document.getElementById("legend-max").textContent =
-        formatCurrency(maxValue);
+        positivos.length ? formatCurrency(maxValue) : "";
 
+    /* escala logarítmica: os totais variam de milhares a bilhões, e numa
+       escala linear poucos municípios (ex.: Fortaleza) deixavam todo o
+       resto do mapa com a mesma cor clara */
     const colorScale = d3
-        .scaleSequential()
+        .scaleSequentialLog()
         .interpolator(
             d3.interpolateRgbBasis([
                 "#d1fae5",
@@ -438,7 +486,7 @@ function renderChart() {
                 "#064e3b"
             ])
         )
-        .domain([0, maxValue]);
+        .domain(minValue < maxValue ? [minValue, maxValue] : [maxValue / 10, maxValue]);
 
     function fillFor(nome) {
         const valor = Number(dataFromStreamlit[nome] || 0);
@@ -464,7 +512,10 @@ function renderChart() {
         .filter(event =>
             event.type === "wheel" ? event.ctrlKey : !event.button
         )
-        .on("zoom", zoomed);
+        .on("zoom", event => {
+            g.attr("transform", event.transform);
+            g.attr("stroke-width", 0.75 / event.transform.k);
+        });
 
     svg.call(zoom);
 
@@ -478,7 +529,12 @@ function renderChart() {
         .attr("class", "municipio")
         .attr("d", path)
         .attr("fill", d => fillFor(d.properties.name))
-        .on("click", clicked)
+
+        .on("click", function (event, d) {
+            event.stopPropagation();
+            selecionar(d, true);
+            enviarClique(d);
+        })
 
         .on("mouseover", function (event, d) {
 
@@ -515,81 +571,138 @@ function renderChart() {
             tooltip.style("display", "none");
         });
 
-
-    /* ---------- clique / zoom no município ---------- */
-
-    function clicked(event, d) {
-
-        event.stopPropagation();
-
-        const [[x0, y0], [x1, y1]] = path.bounds(d);
-        const nome = d.properties.name;
-
-        updateInfoPanel(nome);
-
-        municipios
-            .classed("selected", item => item.properties.name === nome)
-            .transition()
-            .duration(250)
-            .attr("fill", item =>
-                item.properties.name === nome
-                    ? "#fbbc2c"
-                    : fillFor(item.properties.name)
-            );
-
-        svg
-            .transition()
-            .duration(650)
-            .call(
-                zoom.transform,
-                d3.zoomIdentity
-                    .translate(width / 2, height / 2)
-                    .scale(
-                        Math.min(
-                            7,
-                            0.88 / Math.max(
-                                (x1 - x0) / width,
-                                (y1 - y0) / height
-                            )
-                        )
-                    )
-                    .translate(-(x0 + x1) / 2, -(y0 + y1) / 2)
-            );
-    }
-
-
-    /* ---------- reset ---------- */
+    /* ---------- clique fora dos municípios: volta para todos ---------- */
 
     svg.on("click", function (event) {
-
-        if (event.target.tagName === "svg") {
-
-            municipios
-                .classed("selected", false)
-                .transition()
-                .duration(250)
-                .attr("fill", d => fillFor(d.properties.name));
-
-            svg
-                .transition()
-                .duration(600)
-                .call(zoom.transform, d3.zoomIdentity);
+        if (event.target.tagName === "svg" && selecionadoAtual !== null) {
+            selecionar(null, true);
+            enviarClique(null);
         }
     });
 
-
-    /* ---------- zoom handler ---------- */
-
-    function zoomed(event) {
-        g.attr("transform", event.transform);
-        g.attr("stroke-width", 0.75 / event.transform.k);
-    }
-
-    return svg.node();
+    return { svg, municipios, zoom, path, fillFor, width, height };
 }
 
 
-document.getElementById("map").appendChild(renderChart());
+/* ====================================================
+   SELEÇÃO (destaque + zoom + painel)
+==================================================== */
+
+function selecionar(feature, animar) {
+
+    if (!mapa) return;
+
+    const { svg, municipios, zoom, path, fillFor, width, height } = mapa;
+    const duracaoCor = animar ? 250 : 0;
+    const duracaoZoom = animar ? 650 : 0;
+
+    if (!feature) {
+        selecionadoAtual = null;
+
+        municipios
+            .classed("selected", false)
+            .transition()
+            .duration(duracaoCor)
+            .attr("fill", d => fillFor(d.properties.name));
+
+        svg
+            .transition()
+            .duration(duracaoZoom)
+            .call(zoom.transform, d3.zoomIdentity);
+
+        mostrarPainelVazio();
+        return;
+    }
+
+    const codigo = String(feature.properties.id);
+    const nome = feature.properties.name;
+    selecionadoAtual = codigo;
+
+    updateInfoPanel(nome);
+
+    municipios
+        .classed("selected", item => String(item.properties.id) === codigo)
+        .transition()
+        .duration(duracaoCor)
+        .attr("fill", item =>
+            String(item.properties.id) === codigo
+                ? "#fbbc2c"
+                : fillFor(item.properties.name)
+        );
+
+    const [[x0, y0], [x1, y1]] = path.bounds(feature);
+
+    svg
+        .transition()
+        .duration(duracaoZoom)
+        .call(
+            zoom.transform,
+            d3.zoomIdentity
+                .translate(width / 2, height / 2)
+                .scale(
+                    Math.min(
+                        7,
+                        0.88 / Math.max(
+                            (x1 - x0) / width,
+                            (y1 - y0) / height
+                        )
+                    )
+                )
+                .translate(-(x0 + x1) / 2, -(y0 + y1) / 2)
+        );
+}
+
+
+/* ====================================================
+   RECEBE OS DADOS DO STREAMLIT
+==================================================== */
+
+window.addEventListener("message", function (event) {
+
+    const msg = event.data;
+    if (!msg || msg.type !== "streamlit:render") return;
+
+    const args = msg.args || {};
+
+    if (args.geojson) geojson = args.geojson;
+    populacaoFromIBGE = args.populacao || {};
+    if (!geojson) return;
+
+    // redesenha só quando os dados do mapa mudam (ex.: outro filtro de ano);
+    // trocar só o município selecionado não precisa redesenhar
+    const novaAssinatura = JSON.stringify([args.data || {}, args.describe || {}]);
+
+    if (!mapa || novaAssinatura !== assinaturaDados) {
+        dataFromStreamlit = args.data || {};
+        describeFromStreamlit = args.describe || {};
+        assinaturaDados = novaAssinatura;
+
+        mapa = renderChart();
+        const alvo = document.getElementById("map");
+        alvo.innerHTML = "";
+        alvo.appendChild(mapa.svg.node());
+
+        selecionadoAtual = null;
+        mostrarPainelVazio();
+    }
+
+    // sincroniza com o filtro de município da sidebar
+    const alvo = args.selecionado ? String(args.selecionado) : null;
+
+    if (alvo !== selecionadoAtual) {
+        const feature = alvo
+            ? geojson.features.find(f => String(f.properties.id) === alvo)
+            : null;
+        selecionar(feature || null, true);
+    }
+
+    ajustarAltura();
+});
+
+new ResizeObserver(ajustarAltura).observe(document.body);
+
+mostrarPainelVazio();
+enviarAoStreamlit("streamlit:componentReady", { apiVersion: 1 });
 
 </script>
 

@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from utils import pncp
-from utils.mapa import carregar_geojson, renderizar_mapa
+from utils.mapa import renderizar_mapa
 from utils.pipeline import aplicar_filtros, construir_agregados, executar_pipeline
 
 
@@ -39,6 +39,25 @@ def formatar_moeda(valor: float) -> str:
 
 def formatar_num(valor: int) -> str:
     return f"{valor:,}".replace(",", ".")
+
+
+TODOS_MUNICIPIOS = "Todos os municípios"
+
+
+def codigo_do_municipio(df, nome):
+    """Código IBGE do município escolhido na sidebar (para destacar no mapa)."""
+    if df is None or not nome or nome == TODOS_MUNICIPIOS or "codigoIbge" not in df.columns:
+        return None
+    codigos = df.loc[df["municipio"] == nome, "codigoIbge"].dropna()
+    return str(codigos.iloc[0]) if not codigos.empty else None
+
+
+def municipio_do_codigo(df, codigo):
+    """Nome do município (como aparece no filtro) a partir do código clicado no mapa."""
+    if df is None or not codigo or "codigoIbge" not in df.columns:
+        return None
+    nomes = df.loc[df["codigoIbge"] == str(codigo), "municipio"]
+    return nomes.iloc[0] if not nomes.empty else None
 
 
 # =========================================================
@@ -535,6 +554,7 @@ with st.sidebar:
         value=(hoje.replace(day=1), hoje),
         label_visibility="collapsed",
     )
+    st.caption("O período considera a data de publicação no PNCP.")
 
     baixar_clicado = st.button(
         "Baixar contratos",
@@ -667,8 +687,10 @@ with st.sidebar:
 
     html('<div class="sidebar-title secundario"><span class="icon">tune</span>Filtros Dinâmicos</div>')
 
-    html('<div class="filter-label">Ano do Contrato</div>')
-    anos_opcoes = ["Todos"] + (sorted(df_real["ano"].unique()) if df_real is not None else ["2026", "2025"])
+    html('<div class="filter-label">Ano de Publicação</div>')
+    anos_opcoes = ["Todos"] + (
+        sorted(df_real["ano"].astype(str).unique(), reverse=True) if df_real is not None else ["2026", "2025"]
+    )
     ano = st.segmented_control(
         "Ano",
         options=anos_opcoes,
@@ -677,13 +699,23 @@ with st.sidebar:
     )
 
     html('<div class="filter-label">Município</div>')
-    municipios_opcoes = ["Todos os municípios"] + (
+    municipios_opcoes = [TODOS_MUNICIPIOS] + (
         sorted(df_real["municipio"].unique()) if df_real is not None
         else ["Crateús", "Fortaleza", "Sobral", "Juazeiro do Norte"]
     )
+
+    # clique no mapa (registrado na execução anterior) vira o filtro de município.
+    # Precisa ser feito ANTES de criar o selectbox: o Streamlit não deixa
+    # alterar o valor de um widget depois que ele já foi desenhado.
+    if "municipio_pendente" in st.session_state:
+        st.session_state["filtro_municipio"] = st.session_state.pop("municipio_pendente")
+    if st.session_state.get("filtro_municipio") not in municipios_opcoes:
+        st.session_state["filtro_municipio"] = TODOS_MUNICIPIOS
+
     municipio = st.selectbox(
         "Município",
         options=municipios_opcoes,
+        key="filtro_municipio",
         label_visibility="collapsed",
     )
 
@@ -696,6 +728,19 @@ with st.sidebar:
         "Categoria",
         options=categorias_opcoes,
         label_visibility="collapsed",
+    )
+
+    html('<div class="filter-label">Esfera do Órgão</div>')
+    esferas_opcoes = ["Todas as esferas"] + (
+        sorted(df_real["esfera"].dropna().unique()) if df_real is not None and "esfera" in df_real.columns
+        else ["Municipal", "Estadual", "Federal"]
+    )
+    esfera = st.selectbox(
+        "Esfera",
+        options=esferas_opcoes,
+        label_visibility="collapsed",
+        help="O PNCP traz também órgãos estaduais e federais sediados nos municípios "
+             "(em Fortaleza, a maioria é do Estado). Escolha Municipal para ver só prefeituras e câmaras.",
     )
 
     html('<div class="filter-label">Nível de Risco</div>')
@@ -721,21 +766,28 @@ with st.sidebar:
 
 
 # =========================================================
-# DADOS PARA O DASHBOARD (reais, filtrados, ou de exemplo)
+# DADOS PARA O DASHBOARD
 # =========================================================
 
 if df_real is not None:
-    df_filtrado = aplicar_filtros(df_real, ano=ano, municipio=municipio, categoria=categoria, risco=risco)
+    df_filtrado = aplicar_filtros(
+        df_real, ano=ano, municipio=municipio, categoria=categoria, risco=risco, esfera=esfera
+    )
     agregados = construir_agregados(df_filtrado)
 
-    data_municipios = agregados["data_municipios"]
-    describe_municipios = agregados["describe_municipios"]
-    populacao_municipios = agregados["populacao_municipios"]
+    # o mapa usa todos os filtros MENOS o de município: assim ele continua
+    # mostrando o estado inteiro e dá para clicar em outro município
+    df_mapa = aplicar_filtros(df_real, ano=ano, categoria=categoria, risco=risco, esfera=esfera)
+    agregados_mapa = construir_agregados(df_mapa)
+
+    data_municipios = agregados_mapa["data_municipios"]
+    describe_municipios = agregados_mapa["describe_municipios"]
+    populacao_municipios = agregados_mapa["populacao_municipios"]
 
     kpis_valores = [
         ("Contratos", formatar_num(agregados["kpis"]["contratos"])),
         ("Valor Total", formatar_moeda(agregados["kpis"]["valor_total"])),
-        ("Municípios", formatar_num(agregados["kpis"]["municipios"])),
+        ("Municípios com contratos", formatar_num(agregados["kpis"]["municipios"])),
         (
             "Anomalias",
             formatar_num(agregados["kpis"]["anomalias"])
@@ -749,56 +801,22 @@ if df_real is not None:
     badge_classe, badge_texto = "real", f"{formatar_num(len(df_filtrado))} contratos analisados"
 
 else:
-    # -------- DADOS DE EXEMPLO (nenhuma análise rodada ainda) --------
-    data_municipios = {
-        # "Fortaleza": 5_000_000,
-        # "Crateús": 1_200_000,
-        # "Sobral": 2_800_000,
-        # "Juazeiro do Norte": 3_500_000,
-    }
-
-    describe_municipios = {
-        # "Fortaleza": {
-        #     "count": 20, "mean": 250_000, "std": 85_000, "min": 30_000,
-        #     "25%": 120_000, "50%": 210_000, "75%": 340_000, "max": 800_000,
-        # },
-        # "Crateús": {
-        #     "count": 8, "mean": 150_000, "std": 40_000, "min": 50_000,
-        #     "25%": 90_000, "50%": 140_000, "75%": 200_000, "max": 320_000,
-        # },
-        # "Sobral": {
-        #     "count": 14, "mean": 200_000, "std": 55_000, "min": 35_000,
-        #     "25%": 110_000, "50%": 180_000, "75%": 290_000, "max": 620_000,
-        # },
-        # "Juazeiro do Norte": {
-        #     "count": 18, "mean": 194_444, "std": 67_000, "min": 25_000,
-        #     "25%": 95_000, "50%": 170_000, "75%": 280_000, "max": 710_000,
-        # },
-    }
-
-    populacao_municipios = {
-        # "2304400": {"populacao": 2_600_000},
-        # "2304103": {"populacao": 75_000},
-        # "2312908": {"populacao": 210_000},
-        # "2307304": {"populacao": 280_000},
-    }
+    # -------- NENHUMA ANÁLISE RODADA AINDA --------
+    data_municipios = {}
+    describe_municipios = {}
+    populacao_municipios = {}
 
     kpis_valores = [
-        # ("Contratos", "—"),
-        # ("Valor Total", "—"),
-        # ("Municípios", formatar_num(len(carregar_geojson()["features"]))),
-        # ("Anomalias", "—"),
+        ("Contratos", "—"),
+        ("Valor Total", "—"),
+        ("Municípios com contratos", "—"),
+        ("Anomalias", "—"),
     ]
 
-    categorias = [
-        # ("Serviços", 82),
-        # ("Aquisições", 68),
-        # ("Obras", 49),
-        # ("Outros", 31),
-    ]
+    categorias = []
 
     top_risco = pd.DataFrame()
-    badge_classe, badge_texto = "exemplo", "Dados de exemplo — baixe e analise contratos para ver dados reais"
+    badge_classe, badge_texto = "exemplo", "Nenhuma análise carregada — escolha uma base e clique em Fazer análise"
 
 
 # =========================================================
@@ -852,18 +870,38 @@ with map_col:
             <div class="card-header">
             <div>
             <div class="card-title">Distribuição Territorial</div>
-            <div class="card-subtitle">Valor contratado por município</div>
+            <div class="card-subtitle">Valor contratado por município · clique para filtrar</div>
             </div>
             <div class="tag">D3.js</div>
             </div>
             """
         )
 
-        renderizar_mapa(
+        clique = renderizar_mapa(
             data_municipios=data_municipios,
             describe_municipios=describe_municipios,
             populacao_municipios=populacao_municipios,
+            selecionado=codigo_do_municipio(df_real, municipio),
         )
+
+    # cada clique traz um carimbo de tempo "t"; só tratamos cliques novos
+    if (
+        df_real is not None
+        and isinstance(clique, dict)
+        and clique.get("t") != st.session_state.get("mapa_ultimo_clique")
+    ):
+        st.session_state["mapa_ultimo_clique"] = clique.get("t")
+
+        if clique.get("codigo") is None:
+            novo_municipio = TODOS_MUNICIPIOS
+        else:
+            novo_municipio = municipio_do_codigo(df_real, clique["codigo"])
+            if novo_municipio is None:
+                st.toast(f"{clique.get('nome')} não tem contratos nesta base.")
+
+        if novo_municipio is not None and novo_municipio != municipio:
+            st.session_state["municipio_pendente"] = novo_municipio
+            st.rerun()
 
 
 # ---------------------------------------------------------
@@ -873,14 +911,15 @@ with map_col:
 with categoria_col:
 
     if categorias:
-        maior_pct = max(pct for _, pct in categorias) or 1
         barras = "".join(
             f'<div>'
-            f'<div class="bar-label">{nome}</div>'
-            f'<div class="bar-track"><div class="bar-fill" style="width:{pct}%;"></div></div>'
+            f'<div class="bar-label">{nome} · {str(fatia).replace(".", ",")}%</div>'
+            f'<div class="bar-track"><div class="bar-fill" style="width:{largura}%;"></div></div>'
             f'</div>'
-            for nome, pct in categorias
+            for nome, largura, fatia in categorias
         )
+    elif df_real is None:
+        barras = '<div class="bar-label">Rode uma análise para ver as categorias.</div>'
     else:
         barras = '<div class="bar-label">Nenhum contrato encontrado com esses filtros.</div>'
 
@@ -918,6 +957,7 @@ if not top_risco.empty:
         tabela = top_risco.rename(
             columns={
                 "municipio": "Município",
+                "esfera": "Esfera",
                 "objeto": "Objeto do contrato",
                 "fornecedor": "Fornecedor",
                 "valor": "Valor (R$)",

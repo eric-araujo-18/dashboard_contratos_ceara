@@ -29,6 +29,36 @@ def _mapa_nome_geojson() -> dict:
     }
 
 
+def _mapa_codigo_geojson() -> dict:
+    """{código IBGE (7 dígitos): nome oficial como está no GeoJSON}."""
+    geojson = carregar_geojson()
+    return {
+        str(feature["properties"]["id"]): feature["properties"]["name"]
+        for feature in geojson["features"]
+    }
+
+
+def _nome_geojson(df: pd.DataFrame) -> pd.Series:
+    """
+    Nome do município no GeoJSON para cada contrato. Casa primeiro pelo
+    código IBGE (robusto a grafias diferentes, ex.: Itapajé x Itapagé)
+    e usa o nome normalizado só como reserva.
+    """
+    por_nome = df["municipioNorm"].map(_mapa_nome_geojson())
+    if "codigoIbge" not in df.columns:
+        return por_nome
+    return df["codigoIbge"].map(_mapa_codigo_geojson()).fillna(por_nome)
+
+
+def _populacao(df: pd.DataFrame, pop_por_nome: dict) -> pd.Series:
+    """População do município de cada contrato: pelo código IBGE, com o nome como reserva."""
+    por_nome = df["municipioNorm"].map(lambda nome: pop_por_nome.get(nome, {}).get("populacao"))
+    if "codigoIbge" not in df.columns:
+        return por_nome
+    por_codigo = {str(d["codigo_ibge"]): d["populacao"] for d in pop_por_nome.values()}
+    return df["codigoIbge"].map(por_codigo).fillna(por_nome)
+
+
 def executar_pipeline(
     df_bruto: pd.DataFrame,
     progresso: Optional[Progresso] = None,
@@ -52,9 +82,7 @@ def executar_pipeline(
 
     avisar(0.55, "Cruzando com a população do IBGE...")
     pop_por_nome = carregar_populacao()
-    df["populacao"] = df["municipioNorm"].map(
-        lambda nome: pop_por_nome.get(nome, {}).get("populacao")
-    )
+    df["populacao"] = _populacao(df, pop_por_nome)
 
     avisar(0.70, "Procurando contratos atípicos (Isolation Forest)...")
     df, info_anomalias = detectar_anomalias(df)
@@ -80,16 +108,13 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
       - data_municipios: {nome oficial do GeoJSON: soma do valor}
       - describe_municipios: {nome oficial: describe() do valor}
       - populacao_municipios: {codigo_ibge: {"populacao": n}}
-      - kpis: contratos, valor_total, municipios, anomalias
-      - categorias: top categorias por valor contratado
+      - kpis: contratos, valor_total, municipios (com contratos), anomalias
+      - categorias: top categorias por valor [(nome, largura da barra %, fatia do total %)]
       - top_risco: contratos com risco Alto, ordenados por scoreRisco
     Funciona também com um df vazio (após aplicar filtros, por exemplo).
     """
     pop_por_nome = pop_por_nome if pop_por_nome is not None else carregar_populacao()
     populacao_municipios = populacao_por_codigo(pop_por_nome)
-
-    geojson_por_norm = _mapa_nome_geojson()
-    total_municipios_ceara = len(geojson_por_norm)
 
     if df.empty:
         return {
@@ -99,7 +124,7 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
             "kpis": {
                 "contratos": 0,
                 "valor_total": 0.0,
-                "municipios": total_municipios_ceara,
+                "municipios": 0,
                 "anomalias": None,
             },
             "categorias": [],
@@ -107,7 +132,7 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
         }
 
     # nome oficial do GeoJSON para cada linha (None quando não casa com nenhum município)
-    nome_geojson = df["municipioNorm"].map(geojson_por_norm)
+    nome_geojson = _nome_geojson(df)
     df_mapa = df.assign(nomeGeojson=nome_geojson).dropna(subset=["nomeGeojson"])
 
     data_municipios = df_mapa.groupby("nomeGeojson")["valor"].sum().to_dict()
@@ -128,7 +153,7 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
     kpis = {
         "contratos": int(len(df)),
         "valor_total": float(df["valor"].sum()),
-        "municipios": total_municipios_ceara,
+        "municipios": int(df_mapa["nomeGeojson"].nunique()),
         "anomalias": anomalias_count if tem_risco else None,
     }
 
@@ -138,17 +163,18 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
         else pd.Series(dtype=float)
     )
     maior = float(categorias_valor.max()) if not categorias_valor.empty else 1.0
+    total = float(categorias_valor.sum()) or 1.0
     categorias = [
-        (nome, round(float(valor) / maior * 100, 1))
+        (nome, round(float(valor) / maior * 100, 1), round(float(valor) / total * 100, 1))
         for nome, valor in categorias_valor.head(6).items()
     ]
 
     if "risco" in df.columns:
         top_risco = (
             df[df["risco"] == "Alto"]
-            .sort_values("scoreRisco", ascending=False)
+            .sort_values("scoreIF" if "scoreIF" in df.columns else "scoreRisco", ascending=False)
             .loc[:, [c for c in [
-                "municipio", "objeto", "fornecedor", "valor",
+                "municipio", "esfera", "objeto", "fornecedor", "valor",
                 "categoriaCurta", "scoreRisco", "motivoRisco",
             ] if c in df.columns]]
             .head(20)
@@ -172,12 +198,13 @@ def aplicar_filtros(
     municipio: Optional[str] = None,
     categoria: Optional[str] = None,
     risco: Optional[str] = None,
+    esfera: Optional[str] = None,
 ) -> pd.DataFrame:
     """Aplica os filtros da sidebar sobre o DataFrame já processado."""
     filtrado = df
 
     if ano and ano != "Todos":
-        filtrado = filtrado[filtrado["ano"] == ano]
+        filtrado = filtrado[filtrado["ano"].astype(str) == str(ano)]
 
     if municipio and not municipio.startswith("Todos"):
         alvo = padronizar_texto(municipio)
@@ -188,5 +215,8 @@ def aplicar_filtros(
 
     if risco and risco != "Todos" and "risco" in filtrado.columns:
         filtrado = filtrado[filtrado["risco"] == risco]
+
+    if esfera and not esfera.startswith("Todas") and "esfera" in filtrado.columns:
+        filtrado = filtrado[filtrado["esfera"] == esfera]
 
     return filtrado

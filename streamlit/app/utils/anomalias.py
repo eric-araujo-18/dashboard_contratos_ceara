@@ -28,6 +28,17 @@ MINIMO_CONTRATOS_CATEGORIA = 5
 PERCENTIL_ALTO = 0.95
 PERCENTIL_MEDIO = 0.85
 
+# texto usado quando nenhuma regra explícita explica o contrato: aponta a
+# feature que mais se afastou da média (mesma ordem das colunas de X)
+DESTAQUES = [
+    ("Valor absoluto muito alto", "Valor absoluto muito baixo"),
+    ("Valor acima do padrão da categoria", "Valor abaixo do padrão da categoria"),
+    ("Valor por habitante alto para o município", "Valor por habitante baixo para o município"),
+    ("Vigência longa", "Vigência muito curta"),
+    ("Fornecedor concentrado no município", "Fornecedor pouco concentrado no município"),
+    ("Fornecedor com muitos contratos no município", "Fornecedor com poucos contratos no município"),
+]
+
 
 def _motivos(linha: pd.Series) -> str:
     m = []
@@ -41,7 +52,9 @@ def _motivos(linha: pd.Series) -> str:
         m.append("Datas de vigência inconsistentes")
     elif linha["duracao_dias"] > 1825:
         m.append("Vigência superior a 5 anos")
-    return "; ".join(m) if m else "Combinação atípica de características"
+    if linha["assinatura_apos_publicacao"]:
+        m.append("Assinatura posterior à publicação no PNCP")
+    return "; ".join(m) if m else f"Combinação atípica (destaque: {linha['destaque']})"
 
 
 def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
@@ -101,12 +114,27 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     percentil = anomalia.rank(pct=True, method="average")
 
     df["scoreRisco"] = (percentil * 100).round(1)
+    df["scoreIF"] = anomalia  # score bruto, para desempatar o ranking
     df["risco"] = np.select(
         [percentil >= PERCENTIL_ALTO, percentil >= PERCENTIL_MEDIO], ["Alto", "Médio"], "Baixo"
     )
     df["anomalia"] = df["risco"] == "Alto"
 
+    coluna_destaque = np.abs(X).argmax(axis=1)
+    sinal_destaque = X[np.arange(len(X)), coluna_destaque] >= 0
+    destaque = [
+        DESTAQUES[c][0 if positivo else 1]
+        for c, positivo in zip(coluna_destaque, sinal_destaque)
+    ]
+    apos_publicacao = (
+        df["assinaturaAposPublicacao"].fillna(False).astype(bool)
+        if "assinaturaAposPublicacao" in df.columns
+        else pd.Series(False, index=df.index)
+    )
+    # inconsistência de datas é um sinal de risco por si só: sobe para Médio
+    df.loc[apos_publicacao & (df["risco"] == "Baixo"), "risco"] = "Médio"
     sinalizados = df["risco"] != "Baixo"
+
     apoio = pd.DataFrame(
         {
             "z_categoria": z_categoria,
@@ -114,7 +142,10 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             "z_per_capita": z_pc,
             "share_fornecedor": share,
             "duracao_dias": duracao,
-        }
+            "assinatura_apos_publicacao": apos_publicacao,
+            "destaque": destaque,
+        },
+        index=df.index,
     )[sinalizados].fillna({"duracao_dias": 0})
     df.loc[sinalizados, "motivoRisco"] = apoio.apply(_motivos, axis=1)
 

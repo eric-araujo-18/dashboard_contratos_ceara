@@ -1,3 +1,6 @@
+
+const GITHUB_REPO_URL = process.env.GITHUB_REPO_URL || "#";
+const LINKEDIN_URL = process.env.LINKEDIN_URL || "#";
 export default function Author() {
   return (
     <section
@@ -115,13 +118,13 @@ export default function Author() {
               <ExternalButton
                 icon="code"
                 text="Perfil no GitHub"
-                href="https://github.com"
+                href={GITHUB_REPO_URL}
               />
 
               <ExternalButton
                 icon="badge"
                 text="LinkedIn"
-                href="https://linkedin.com"
+                href={LINKEDIN_URL}
               />
             </div>
           </div>

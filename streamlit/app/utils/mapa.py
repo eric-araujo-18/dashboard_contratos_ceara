@@ -1,13 +1,22 @@
+"""
+Mapa do Ceará (D3.js) como componente do Streamlit.
+
+É um componente "de verdade" (e não só um iframe estático) para que o
+clique num município volte para o Python e vire o filtro do dashboard.
+O HTML fica em app/components/mapa_ceara/index.html e recebe os dados
+pelo protocolo de componentes do Streamlit.
+"""
 import json
-from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 
+from utils.config import BASE_DIR, GEOJSON_PATH
 
-BASE_DIR = Path(__file__).resolve().parents[2]
+PASTA_COMPONENTE = BASE_DIR / "app" / "components" / "mapa_ceara"
+CAMINHO_GEOJSON = GEOJSON_PATH
 
-CAMINHO_HTML = BASE_DIR / "app" / "components" / "mapa_ceara.html"
-CAMINHO_GEOJSON = BASE_DIR / "data" / "geo" / "ceara.geojson.json"
+_componente_mapa = components.declare_component("mapa_ceara", path=str(PASTA_COMPONENTE))
 
 
 @st.cache_data
@@ -16,35 +25,26 @@ def carregar_geojson():
         return json.load(arquivo)
 
 
-@st.cache_data
-def carregar_html():
-    with open(CAMINHO_HTML, "r", encoding="utf-8") as arquivo:
-        return arquivo.read()
-
-
 def renderizar_mapa(
     data_municipios=None,
     describe_municipios=None,
     populacao_municipios=None,
+    selecionado=None,
+    key="mapa_ceara",
 ):
-    data_municipios = data_municipios or {}
-    describe_municipios = describe_municipios or {}
-    populacao_municipios = populacao_municipios or {}
-
-    substituicoes = {
-        "__DATA_FROM_STREAMLIT__": data_municipios,
-        "__DESCRIBE_FROM_STREAMLIT__": describe_municipios,
-        "__POPULACAO_FROM_IBGE__": populacao_municipios,
-        "__GEOJSON__": carregar_geojson(),
-    }
-
-    conteudo = carregar_html()
-
-    for marcador, valor in substituicoes.items():
-        conteudo = conteudo.replace(
-            marcador,
-            json.dumps(valor, ensure_ascii=False),
-        )
-
-    # Requer Streamlit >= 1.56
-    st.iframe(conteudo, height=840)
+    """
+    Desenha o mapa e devolve o último clique:
+      {"codigo": "2304103", "nome": "Crateús", "t": 1727...}  -> clicou num município
+      {"codigo": None, "nome": None, "t": ...}                -> clicou fora (limpar)
+      None                                                    -> ainda não houve clique
+    `selecionado` é o código IBGE do município a destacar (sincroniza com a sidebar).
+    """
+    return _componente_mapa(
+        data=data_municipios or {},
+        describe=describe_municipios or {},
+        populacao=populacao_municipios or {},
+        geojson=carregar_geojson(),
+        selecionado=selecionado,
+        key=key,
+        default=None,
+    )
