@@ -1,0 +1,922 @@
+{
+  "ABAIARA - CE": {
+    "codigo_ibge": "2300101",
+    "municipio": "Abaiara - CE",
+    "populacao": 10038
+  },
+  "ACARAPE - CE": {
+    "codigo_ibge": "2300150",
+    "municipio": "Acarape - CE",
+    "populacao": 14027
+  },
+  "ACARAU - CE": {
+    "codigo_ibge": "2300200",
+    "municipio": "Acaraú - CE",
+    "populacao": 65264
+  },
+  "ACOPIARA - CE": {
+    "codigo_ibge": "2300309",
+    "municipio": "Acopiara - CE",
+    "populacao": 44962
+  },
+  "AIUABA - CE": {
+    "codigo_ibge": "2300408",
+    "municipio": "Aiuaba - CE",
+    "populacao": 14076
+  },
+  "ALCANTARAS - CE": {
+    "codigo_ibge": "2300507",
+    "municipio": "Alcântaras - CE",
+    "populacao": 11369
+  },
+  "ALTANEIRA - CE": {
+    "codigo_ibge": "2300606",
+    "municipio": "Altaneira - CE",
+    "populacao": 6782
+  },
+  "ALTO SANTO - CE": {
+    "codigo_ibge": "2300705",
+    "municipio": "Alto Santo - CE",
+    "populacao": 14155
+  },
+  "AMONTADA - CE": {
+    "codigo_ibge": "2300754",
+    "municipio": "Amontada - CE",
+    "populacao": 42156
+  },
+  "ANTONINA DO NORTE - CE": {
+    "codigo_ibge": "2300804",
+    "municipio": "Antonina do Norte - CE",
+    "populacao": 7245
+  },
+  "APUIARES - CE": {
+    "codigo_ibge": "2300903",
+    "municipio": "Apuiarés - CE",
+    "populacao": 12928
+  },
+  "AQUIRAZ - CE": {
+    "codigo_ibge": "2301000",
+    "municipio": "Aquiraz - CE",
+    "populacao": 80645
+  },
+  "ARACATI - CE": {
+    "codigo_ibge": "2301109",
+    "municipio": "Aracati - CE",
+    "populacao": 75113
+  },
+  "ARACOIABA - CE": {
+    "codigo_ibge": "2301208",
+    "municipio": "Aracoiaba - CE",
+    "populacao": 25553
+  },
+  "ARARENDA - CE": {
+    "codigo_ibge": "2301257",
+    "municipio": "Ararendá - CE",
+    "populacao": 11096
+  },
+  "ARARIPE - CE": {
+    "codigo_ibge": "2301307",
+    "municipio": "Araripe - CE",
+    "populacao": 19783
+  },
+  "ARATUBA - CE": {
+    "codigo_ibge": "2301406",
+    "municipio": "Aratuba - CE",
+    "populacao": 11224
+  },
+  "ARNEIROZ - CE": {
+    "codigo_ibge": "2301505",
+    "municipio": "Arneiroz - CE",
+    "populacao": 7429
+  },
+  "ASSARE - CE": {
+    "codigo_ibge": "2301604",
+    "municipio": "Assaré - CE",
+    "populacao": 21697
+  },
+  "AURORA - CE": {
+    "codigo_ibge": "2301703",
+    "municipio": "Aurora - CE",
+    "populacao": 23714
+  },
+  "BAIXIO - CE": {
+    "codigo_ibge": "2301802",
+    "municipio": "Baixio - CE",
+    "populacao": 5704
+  },
+  "BANABUIU - CE": {
+    "codigo_ibge": "2301851",
+    "municipio": "Banabuiú - CE",
+    "populacao": 17195
+  },
+  "BARBALHA - CE": {
+    "codigo_ibge": "2301901",
+    "municipio": "Barbalha - CE",
+    "populacao": 75033
+  },
+  "BARREIRA - CE": {
+    "codigo_ibge": "2301950",
+    "municipio": "Barreira - CE",
+    "populacao": 22392
+  },
+  "BARRO - CE": {
+    "codigo_ibge": "2302008",
+    "municipio": "Barro - CE",
+    "populacao": 19381
+  },
+  "BARROQUINHA - CE": {
+    "codigo_ibge": "2302057",
+    "municipio": "Barroquinha - CE",
+    "populacao": 14567
+  },
+  "BATURITE - CE": {
+    "codigo_ibge": "2302107",
+    "municipio": "Baturité - CE",
+    "populacao": 35218
+  },
+  "BEBERIBE - CE": {
+    "codigo_ibge": "2302206",
+    "municipio": "Beberibe - CE",
+    "populacao": 53114
+  },
+  "BELA CRUZ - CE": {
+    "codigo_ibge": "2302305",
+    "municipio": "Bela Cruz - CE",
+    "populacao": 32775
+  },
+  "BOA VIAGEM - CE": {
+    "codigo_ibge": "2302404",
+    "municipio": "Boa Viagem - CE",
+    "populacao": 50411
+  },
+  "BREJO SANTO - CE": {
+    "codigo_ibge": "2302503",
+    "municipio": "Brejo Santo - CE",
+    "populacao": 51090
+  },
+  "CAMOCIM - CE": {
+    "codigo_ibge": "2302602",
+    "municipio": "Camocim - CE",
+    "populacao": 62326
+  },
+  "CAMPOS SALES - CE": {
+    "codigo_ibge": "2302701",
+    "municipio": "Campos Sales - CE",
+    "populacao": 25135
+  },
+  "CANINDE - CE": {
+    "codigo_ibge": "2302800",
+    "municipio": "Canindé - CE",
+    "populacao": 74174
+  },
+  "CAPISTRANO - CE": {
+    "codigo_ibge": "2302909",
+    "municipio": "Capistrano - CE",
+    "populacao": 17254
+  },
+  "CARIDADE - CE": {
+    "codigo_ibge": "2303006",
+    "municipio": "Caridade - CE",
+    "populacao": 16377
+  },
+  "CARIRE - CE": {
+    "codigo_ibge": "2303105",
+    "municipio": "Cariré - CE",
+    "populacao": 17632
+  },
+  "CARIRIACU - CE": {
+    "codigo_ibge": "2303204",
+    "municipio": "Caririaçu - CE",
+    "populacao": 26320
+  },
+  "CARIUS - CE": {
+    "codigo_ibge": "2303303",
+    "municipio": "Cariús - CE",
+    "populacao": 17015
+  },
+  "CARNAUBAL - CE": {
+    "codigo_ibge": "2303402",
+    "municipio": "Carnaubal - CE",
+    "populacao": 17210
+  },
+  "CASCAVEL - CE": {
+    "codigo_ibge": "2303501",
+    "municipio": "Cascavel - CE",
+    "populacao": 72720
+  },
+  "CATARINA - CE": {
+    "codigo_ibge": "2303600",
+    "municipio": "Catarina - CE",
+    "populacao": 10243
+  },
+  "CATUNDA - CE": {
+    "codigo_ibge": "2303659",
+    "municipio": "Catunda - CE",
+    "populacao": 10444
+  },
+  "CAUCAIA - CE": {
+    "codigo_ibge": "2303709",
+    "municipio": "Caucaia - CE",
+    "populacao": 355679
+  },
+  "CEDRO - CE": {
+    "codigo_ibge": "2303808",
+    "municipio": "Cedro - CE",
+    "populacao": 22344
+  },
+  "CHAVAL - CE": {
+    "codigo_ibge": "2303907",
+    "municipio": "Chaval - CE",
+    "populacao": 12462
+  },
+  "CHORO - CE": {
+    "codigo_ibge": "2303931",
+    "municipio": "Choró - CE",
+    "populacao": 12113
+  },
+  "CHOROZINHO - CE": {
+    "codigo_ibge": "2303956",
+    "municipio": "Chorozinho - CE",
+    "populacao": 20163
+  },
+  "COREAU - CE": {
+    "codigo_ibge": "2304004",
+    "municipio": "Coreaú - CE",
+    "populacao": 20953
+  },
+  "CRATEUS - CE": {
+    "codigo_ibge": "2304103",
+    "municipio": "Crateús - CE",
+    "populacao": 76390
+  },
+  "CRATO - CE": {
+    "codigo_ibge": "2304202",
+    "municipio": "Crato - CE",
+    "populacao": 131050
+  },
+  "CROATA - CE": {
+    "codigo_ibge": "2304236",
+    "municipio": "Croatá - CE",
+    "populacao": 17481
+  },
+  "CRUZ - CE": {
+    "codigo_ibge": "2304251",
+    "municipio": "Cruz - CE",
+    "populacao": 29761
+  },
+  "DEPUTADO IRAPUAN PINHEIRO - CE": {
+    "codigo_ibge": "2304269",
+    "municipio": "Deputado Irapuan Pinheiro - CE",
+    "populacao": 8932
+  },
+  "ERERE - CE": {
+    "codigo_ibge": "2304277",
+    "municipio": "Ereré - CE",
+    "populacao": 6474
+  },
+  "EUSEBIO - CE": {
+    "codigo_ibge": "2304285",
+    "municipio": "Eusébio - CE",
+    "populacao": 74170
+  },
+  "FARIAS BRITO - CE": {
+    "codigo_ibge": "2304301",
+    "municipio": "Farias Brito - CE",
+    "populacao": 18217
+  },
+  "FORQUILHA - CE": {
+    "codigo_ibge": "2304350",
+    "municipio": "Forquilha - CE",
+    "populacao": 24173
+  },
+  "FORTALEZA - CE": {
+    "codigo_ibge": "2304400",
+    "municipio": "Fortaleza - CE",
+    "populacao": 2428708
+  },
+  "FORTIM - CE": {
+    "codigo_ibge": "2304459",
+    "municipio": "Fortim - CE",
+    "populacao": 17294
+  },
+  "FRECHEIRINHA - CE": {
+    "codigo_ibge": "2304509",
+    "municipio": "Frecheirinha - CE",
+    "populacao": 15657
+  },
+  "GENERAL SAMPAIO - CE": {
+    "codigo_ibge": "2304608",
+    "municipio": "General Sampaio - CE",
+    "populacao": 6734
+  },
+  "GRACA - CE": {
+    "codigo_ibge": "2304657",
+    "municipio": "Graça - CE",
+    "populacao": 13801
+  },
+  "GRANJA - CE": {
+    "codigo_ibge": "2304707",
+    "municipio": "Granja - CE",
+    "populacao": 53344
+  },
+  "GRANJEIRO - CE": {
+    "codigo_ibge": "2304806",
+    "municipio": "Granjeiro - CE",
+    "populacao": 4841
+  },
+  "GROAIRAS - CE": {
+    "codigo_ibge": "2304905",
+    "municipio": "Groaíras - CE",
+    "populacao": 10910
+  },
+  "GUAIUBA - CE": {
+    "codigo_ibge": "2304954",
+    "municipio": "Guaiúba - CE",
+    "populacao": 24325
+  },
+  "GUARACIABA DO NORTE - CE": {
+    "codigo_ibge": "2305001",
+    "municipio": "Guaraciaba do Norte - CE",
+    "populacao": 42053
+  },
+  "GUARAMIRANGA - CE": {
+    "codigo_ibge": "2305100",
+    "municipio": "Guaramiranga - CE",
+    "populacao": 5654
+  },
+  "HIDROLANDIA - CE": {
+    "codigo_ibge": "2305209",
+    "municipio": "Hidrolândia - CE",
+    "populacao": 17855
+  },
+  "HORIZONTE - CE": {
+    "codigo_ibge": "2305233",
+    "municipio": "Horizonte - CE",
+    "populacao": 74755
+  },
+  "IBARETAMA - CE": {
+    "codigo_ibge": "2305266",
+    "municipio": "Ibaretama - CE",
+    "populacao": 11956
+  },
+  "IBIAPINA - CE": {
+    "codigo_ibge": "2305308",
+    "municipio": "Ibiapina - CE",
+    "populacao": 23965
+  },
+  "IBICUITINGA - CE": {
+    "codigo_ibge": "2305332",
+    "municipio": "Ibicuitinga - CE",
+    "populacao": 11611
+  },
+  "ICAPUI - CE": {
+    "codigo_ibge": "2305357",
+    "municipio": "Icapuí - CE",
+    "populacao": 21433
+  },
+  "ICO - CE": {
+    "codigo_ibge": "2305407",
+    "municipio": "Icó - CE",
+    "populacao": 62642
+  },
+  "IGUATU - CE": {
+    "codigo_ibge": "2305506",
+    "municipio": "Iguatu - CE",
+    "populacao": 98064
+  },
+  "INDEPENDENCIA - CE": {
+    "codigo_ibge": "2305605",
+    "municipio": "Independência - CE",
+    "populacao": 24024
+  },
+  "IPAPORANGA - CE": {
+    "codigo_ibge": "2305654",
+    "municipio": "Ipaporanga - CE",
+    "populacao": 11575
+  },
+  "IPAUMIRIM - CE": {
+    "codigo_ibge": "2305704",
+    "municipio": "Ipaumirim - CE",
+    "populacao": 12083
+  },
+  "IPU - CE": {
+    "codigo_ibge": "2305803",
+    "municipio": "Ipu - CE",
+    "populacao": 41081
+  },
+  "IPUEIRAS - CE": {
+    "codigo_ibge": "2305902",
+    "municipio": "Ipueiras - CE",
+    "populacao": 36798
+  },
+  "IRACEMA - CE": {
+    "codigo_ibge": "2306009",
+    "municipio": "Iracema - CE",
+    "populacao": 14001
+  },
+  "IRAUCUBA - CE": {
+    "codigo_ibge": "2306108",
+    "municipio": "Irauçuba - CE",
+    "populacao": 23915
+  },
+  "ITAICABA - CE": {
+    "codigo_ibge": "2306207",
+    "municipio": "Itaiçaba - CE",
+    "populacao": 7536
+  },
+  "ITAITINGA - CE": {
+    "codigo_ibge": "2306256",
+    "municipio": "Itaitinga - CE",
+    "populacao": 64650
+  },
+  "ITAPAJE - CE": {
+    "codigo_ibge": "2306306",
+    "municipio": "Itapajé - CE",
+    "populacao": 46426
+  },
+  "ITAPIPOCA - CE": {
+    "codigo_ibge": "2306405",
+    "municipio": "Itapipoca - CE",
+    "populacao": 131123
+  },
+  "ITAPIUNA - CE": {
+    "codigo_ibge": "2306504",
+    "municipio": "Itapiúna - CE",
+    "populacao": 17841
+  },
+  "ITAREMA - CE": {
+    "codigo_ibge": "2306553",
+    "municipio": "Itarema - CE",
+    "populacao": 42957
+  },
+  "ITATIRA - CE": {
+    "codigo_ibge": "2306603",
+    "municipio": "Itatira - CE",
+    "populacao": 20424
+  },
+  "JAGUARETAMA - CE": {
+    "codigo_ibge": "2306702",
+    "municipio": "Jaguaretama - CE",
+    "populacao": 17232
+  },
+  "JAGUARIBARA - CE": {
+    "codigo_ibge": "2306801",
+    "municipio": "Jaguaribara - CE",
+    "populacao": 10356
+  },
+  "JAGUARIBE - CE": {
+    "codigo_ibge": "2306900",
+    "municipio": "Jaguaribe - CE",
+    "populacao": 33726
+  },
+  "JAGUARUANA - CE": {
+    "codigo_ibge": "2307007",
+    "municipio": "Jaguaruana - CE",
+    "populacao": 31701
+  },
+  "JARDIM - CE": {
+    "codigo_ibge": "2307106",
+    "municipio": "Jardim - CE",
+    "populacao": 27411
+  },
+  "JATI - CE": {
+    "codigo_ibge": "2307205",
+    "municipio": "Jati - CE",
+    "populacao": 7861
+  },
+  "JIJOCA DE JERICOACOARA - CE": {
+    "codigo_ibge": "2307254",
+    "municipio": "Jijoca de Jericoacoara - CE",
+    "populacao": 25555
+  },
+  "JUAZEIRO DO NORTE - CE": {
+    "codigo_ibge": "2307304",
+    "municipio": "Juazeiro do Norte - CE",
+    "populacao": 286120
+  },
+  "JUCAS - CE": {
+    "codigo_ibge": "2307403",
+    "municipio": "Jucás - CE",
+    "populacao": 23922
+  },
+  "LAVRAS DA MANGABEIRA - CE": {
+    "codigo_ibge": "2307502",
+    "municipio": "Lavras da Mangabeira - CE",
+    "populacao": 30802
+  },
+  "LIMOEIRO DO NORTE - CE": {
+    "codigo_ibge": "2307601",
+    "municipio": "Limoeiro do Norte - CE",
+    "populacao": 59560
+  },
+  "MADALENA - CE": {
+    "codigo_ibge": "2307635",
+    "municipio": "Madalena - CE",
+    "populacao": 16896
+  },
+  "MARACANAU - CE": {
+    "codigo_ibge": "2307650",
+    "municipio": "Maracanaú - CE",
+    "populacao": 234509
+  },
+  "MARANGUAPE - CE": {
+    "codigo_ibge": "2307700",
+    "municipio": "Maranguape - CE",
+    "populacao": 105093
+  },
+  "MARCO - CE": {
+    "codigo_ibge": "2307809",
+    "municipio": "Marco - CE",
+    "populacao": 25799
+  },
+  "MARTINOPOLE - CE": {
+    "codigo_ibge": "2307908",
+    "municipio": "Martinópole - CE",
+    "populacao": 10846
+  },
+  "MASSAPE - CE": {
+    "codigo_ibge": "2308005",
+    "municipio": "Massapê - CE",
+    "populacao": 37697
+  },
+  "MAURITI - CE": {
+    "codigo_ibge": "2308104",
+    "municipio": "Mauriti - CE",
+    "populacao": 45561
+  },
+  "MERUOCA - CE": {
+    "codigo_ibge": "2308203",
+    "municipio": "Meruoca - CE",
+    "populacao": 15157
+  },
+  "MILAGRES - CE": {
+    "codigo_ibge": "2308302",
+    "municipio": "Milagres - CE",
+    "populacao": 25900
+  },
+  "MILHA - CE": {
+    "codigo_ibge": "2308351",
+    "municipio": "Milhã - CE",
+    "populacao": 14123
+  },
+  "MIRAIMA - CE": {
+    "codigo_ibge": "2308377",
+    "municipio": "Miraíma - CE",
+    "populacao": 14196
+  },
+  "MISSAO VELHA - CE": {
+    "codigo_ibge": "2308401",
+    "municipio": "Missão Velha - CE",
+    "populacao": 36822
+  },
+  "MOMBACA - CE": {
+    "codigo_ibge": "2308500",
+    "municipio": "Mombaça - CE",
+    "populacao": 37735
+  },
+  "MONSENHOR TABOSA - CE": {
+    "codigo_ibge": "2308609",
+    "municipio": "Monsenhor Tabosa - CE",
+    "populacao": 17149
+  },
+  "MORADA NOVA - CE": {
+    "codigo_ibge": "2308708",
+    "municipio": "Morada Nova - CE",
+    "populacao": 61443
+  },
+  "MORAUJO - CE": {
+    "codigo_ibge": "2308807",
+    "municipio": "Moraújo - CE",
+    "populacao": 8254
+  },
+  "MORRINHOS - CE": {
+    "codigo_ibge": "2308906",
+    "municipio": "Morrinhos - CE",
+    "populacao": 22753
+  },
+  "MUCAMBO - CE": {
+    "codigo_ibge": "2309003",
+    "municipio": "Mucambo - CE",
+    "populacao": 13666
+  },
+  "MULUNGU - CE": {
+    "codigo_ibge": "2309102",
+    "municipio": "Mulungu - CE",
+    "populacao": 10569
+  },
+  "NOVA OLINDA - CE": {
+    "codigo_ibge": "2309201",
+    "municipio": "Nova Olinda - CE",
+    "populacao": 15399
+  },
+  "NOVA RUSSAS - CE": {
+    "codigo_ibge": "2309300",
+    "municipio": "Nova Russas - CE",
+    "populacao": 30699
+  },
+  "NOVO ORIENTE - CE": {
+    "codigo_ibge": "2309409",
+    "municipio": "Novo Oriente - CE",
+    "populacao": 27545
+  },
+  "OCARA - CE": {
+    "codigo_ibge": "2309458",
+    "municipio": "Ocara - CE",
+    "populacao": 24493
+  },
+  "OROS - CE": {
+    "codigo_ibge": "2309508",
+    "municipio": "Orós - CE",
+    "populacao": 19675
+  },
+  "PACAJUS - CE": {
+    "codigo_ibge": "2309607",
+    "municipio": "Pacajus - CE",
+    "populacao": 70983
+  },
+  "PACATUBA - CE": {
+    "codigo_ibge": "2309706",
+    "municipio": "Pacatuba - CE",
+    "populacao": 81524
+  },
+  "PACOTI - CE": {
+    "codigo_ibge": "2309805",
+    "municipio": "Pacoti - CE",
+    "populacao": 11186
+  },
+  "PACUJA - CE": {
+    "codigo_ibge": "2309904",
+    "municipio": "Pacujá - CE",
+    "populacao": 6175
+  },
+  "PALHANO - CE": {
+    "codigo_ibge": "2310001",
+    "municipio": "Palhano - CE",
+    "populacao": 9346
+  },
+  "PALMACIA - CE": {
+    "codigo_ibge": "2310100",
+    "municipio": "Palmácia - CE",
+    "populacao": 10242
+  },
+  "PARACURU - CE": {
+    "codigo_ibge": "2310209",
+    "municipio": "Paracuru - CE",
+    "populacao": 38980
+  },
+  "PARAIPABA - CE": {
+    "codigo_ibge": "2310258",
+    "municipio": "Paraipaba - CE",
+    "populacao": 32216
+  },
+  "PARAMBU - CE": {
+    "codigo_ibge": "2310308",
+    "municipio": "Parambu - CE",
+    "populacao": 31445
+  },
+  "PARAMOTI - CE": {
+    "codigo_ibge": "2310407",
+    "municipio": "Paramoti - CE",
+    "populacao": 10384
+  },
+  "PEDRA BRANCA - CE": {
+    "codigo_ibge": "2310506",
+    "municipio": "Pedra Branca - CE",
+    "populacao": 40187
+  },
+  "PENAFORTE - CE": {
+    "codigo_ibge": "2310605",
+    "municipio": "Penaforte - CE",
+    "populacao": 8972
+  },
+  "PENTECOSTE - CE": {
+    "codigo_ibge": "2310704",
+    "municipio": "Pentecoste - CE",
+    "populacao": 37813
+  },
+  "PEREIRO - CE": {
+    "codigo_ibge": "2310803",
+    "municipio": "Pereiro - CE",
+    "populacao": 15274
+  },
+  "PINDORETAMA - CE": {
+    "codigo_ibge": "2310852",
+    "municipio": "Pindoretama - CE",
+    "populacao": 23391
+  },
+  "PIQUET CARNEIRO - CE": {
+    "codigo_ibge": "2310902",
+    "municipio": "Piquet Carneiro - CE",
+    "populacao": 16616
+  },
+  "PIRES FERREIRA - CE": {
+    "codigo_ibge": "2310951",
+    "municipio": "Pires Ferreira - CE",
+    "populacao": 10606
+  },
+  "PORANGA - CE": {
+    "codigo_ibge": "2311009",
+    "municipio": "Poranga - CE",
+    "populacao": 12065
+  },
+  "PORTEIRAS - CE": {
+    "codigo_ibge": "2311108",
+    "municipio": "Porteiras - CE",
+    "populacao": 17050
+  },
+  "POTENGI - CE": {
+    "codigo_ibge": "2311207",
+    "municipio": "Potengi - CE",
+    "populacao": 8833
+  },
+  "POTIRETAMA - CE": {
+    "codigo_ibge": "2311231",
+    "municipio": "Potiretama - CE",
+    "populacao": 5974
+  },
+  "QUITERIANOPOLIS - CE": {
+    "codigo_ibge": "2311264",
+    "municipio": "Quiterianópolis - CE",
+    "populacao": 20213
+  },
+  "QUIXADA - CE": {
+    "codigo_ibge": "2311306",
+    "municipio": "Quixadá - CE",
+    "populacao": 84168
+  },
+  "QUIXELO - CE": {
+    "codigo_ibge": "2311355",
+    "municipio": "Quixelô - CE",
+    "populacao": 15910
+  },
+  "QUIXERAMOBIM - CE": {
+    "codigo_ibge": "2311405",
+    "municipio": "Quixeramobim - CE",
+    "populacao": 82177
+  },
+  "QUIXERE - CE": {
+    "codigo_ibge": "2311504",
+    "municipio": "Quixeré - CE",
+    "populacao": 20874
+  },
+  "REDENCAO - CE": {
+    "codigo_ibge": "2311603",
+    "municipio": "Redenção - CE",
+    "populacao": 27214
+  },
+  "RERIUTABA - CE": {
+    "codigo_ibge": "2311702",
+    "municipio": "Reriutaba - CE",
+    "populacao": 18606
+  },
+  "RUSSAS - CE": {
+    "codigo_ibge": "2311801",
+    "municipio": "Russas - CE",
+    "populacao": 72928
+  },
+  "SABOEIRO - CE": {
+    "codigo_ibge": "2311900",
+    "municipio": "Saboeiro - CE",
+    "populacao": 13854
+  },
+  "SALITRE - CE": {
+    "codigo_ibge": "2311959",
+    "municipio": "Salitre - CE",
+    "populacao": 16633
+  },
+  "SANTANA DO ACARAU - CE": {
+    "codigo_ibge": "2312007",
+    "municipio": "Santana do Acaraú - CE",
+    "populacao": 30628
+  },
+  "SANTANA DO CARIRI - CE": {
+    "codigo_ibge": "2312106",
+    "municipio": "Santana do Cariri - CE",
+    "populacao": 16954
+  },
+  "SANTA QUITERIA - CE": {
+    "codigo_ibge": "2312205",
+    "municipio": "Santa Quitéria - CE",
+    "populacao": 40183
+  },
+  "SAO BENEDITO - CE": {
+    "codigo_ibge": "2312304",
+    "municipio": "São Benedito - CE",
+    "populacao": 47640
+  },
+  "SAO GONCALO DO AMARANTE - CE": {
+    "codigo_ibge": "2312403",
+    "municipio": "São Gonçalo do Amarante - CE",
+    "populacao": 54143
+  },
+  "SAO JOAO DO JAGUARIBE - CE": {
+    "codigo_ibge": "2312502",
+    "municipio": "São João do Jaguaribe - CE",
+    "populacao": 5855
+  },
+  "SAO LUIS DO CURU - CE": {
+    "codigo_ibge": "2312601",
+    "municipio": "São Luís do Curu - CE",
+    "populacao": 10822
+  },
+  "SENADOR POMPEU - CE": {
+    "codigo_ibge": "2312700",
+    "municipio": "Senador Pompeu - CE",
+    "populacao": 24266
+  },
+  "SENADOR SA - CE": {
+    "codigo_ibge": "2312809",
+    "municipio": "Senador Sá - CE",
+    "populacao": 7262
+  },
+  "SOBRAL - CE": {
+    "codigo_ibge": "2312908",
+    "municipio": "Sobral - CE",
+    "populacao": 203023
+  },
+  "SOLONOPOLE - CE": {
+    "codigo_ibge": "2313005",
+    "municipio": "Solonópole - CE",
+    "populacao": 18179
+  },
+  "TABULEIRO DO NORTE - CE": {
+    "codigo_ibge": "2313104",
+    "municipio": "Tabuleiro do Norte - CE",
+    "populacao": 30652
+  },
+  "TAMBORIL - CE": {
+    "codigo_ibge": "2313203",
+    "municipio": "Tamboril - CE",
+    "populacao": 24815
+  },
+  "TARRAFAS - CE": {
+    "codigo_ibge": "2313252",
+    "municipio": "Tarrafas - CE",
+    "populacao": 7529
+  },
+  "TAUA - CE": {
+    "codigo_ibge": "2313302",
+    "municipio": "Tauá - CE",
+    "populacao": 61227
+  },
+  "TEJUCUOCA - CE": {
+    "codigo_ibge": "2313351",
+    "municipio": "Tejuçuoca - CE",
+    "populacao": 17154
+  },
+  "TIANGUA - CE": {
+    "codigo_ibge": "2313401",
+    "municipio": "Tianguá - CE",
+    "populacao": 81506
+  },
+  "TRAIRI - CE": {
+    "codigo_ibge": "2313500",
+    "municipio": "Trairi - CE",
+    "populacao": 58415
+  },
+  "TURURU - CE": {
+    "codigo_ibge": "2313559",
+    "municipio": "Tururu - CE",
+    "populacao": 15412
+  },
+  "UBAJARA - CE": {
+    "codigo_ibge": "2313609",
+    "municipio": "Ubajara - CE",
+    "populacao": 32767
+  },
+  "UMARI - CE": {
+    "codigo_ibge": "2313708",
+    "municipio": "Umari - CE",
+    "populacao": 6871
+  },
+  "UMIRIM - CE": {
+    "codigo_ibge": "2313757",
+    "municipio": "Umirim - CE",
+    "populacao": 17470
+  },
+  "URUBURETAMA - CE": {
+    "codigo_ibge": "2313807",
+    "municipio": "Uruburetama - CE",
+    "populacao": 20189
+  },
+  "URUOCA - CE": {
+    "codigo_ibge": "2313906",
+    "municipio": "Uruoca - CE",
+    "populacao": 13746
+  },
+  "VARJOTA - CE": {
+    "codigo_ibge": "2313955",
+    "municipio": "Varjota - CE",
+    "populacao": 18105
+  },
+  "VARZEA ALEGRE - CE": {
+    "codigo_ibge": "2314003",
+    "municipio": "Várzea Alegre - CE",
+    "populacao": 38984
+  },
+  "VICOSA DO CEARA - CE": {
+    "codigo_ibge": "2314102",
+    "municipio": "Viçosa do Ceará - CE",
+    "populacao": 59712
+  }
+}

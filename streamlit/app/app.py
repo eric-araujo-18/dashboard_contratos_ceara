@@ -1,6 +1,11 @@
+from datetime import date
+
+import pandas as pd
 import streamlit as st
 
-from utils.mapa import renderizar_mapa
+from utils import pncp
+from utils.mapa import carregar_geojson, renderizar_mapa
+from utils.pipeline import aplicar_filtros, construir_agregados, executar_pipeline
 
 
 # =========================================================
@@ -16,14 +21,24 @@ st.set_page_config(
 
 
 # =========================================================
-# HELPER HTML
-# Remove indentação e linhas em branco para o Markdown
-# não interpretar o conteúdo como bloco de código.
+# HELPERS
 # =========================================================
 
 def html(content: str) -> None:
+    """Remove indentação e linhas em branco para o Markdown
+    não interpretar o conteúdo como bloco de código."""
     linhas = [l.strip() for l in content.splitlines() if l.strip()]
     st.markdown("\n".join(linhas), unsafe_allow_html=True)
+
+
+def formatar_moeda(valor: float) -> str:
+    texto = f"{valor:,.2f}"
+    texto = texto.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {texto}"
+
+
+def formatar_num(valor: int) -> str:
+    return f"{valor:,}".replace(",", ".")
 
 
 # =========================================================
@@ -107,7 +122,7 @@ html(
     }
 
     div[data-testid="stVerticalBlock"] { gap: 1.25rem; }
-    .stMarkdown p { margin: 0; }
+    .stMarkdown p { margin: 0; margin-bottom: 0.5rem; }
 
     .icon {
         font-family: 'Material Symbols Outlined' !important;
@@ -127,8 +142,8 @@ html(
     ===================================================== */
 
     section[data-testid="stSidebar"][aria-expanded="true"] {
-        width: 300px !important;
-        min-width: 300px !important;
+        width: 320px !important;
+        min-width: 320px !important;
     }
 
     section[data-testid="stSidebar"] {
@@ -154,9 +169,13 @@ html(
         font-weight: 700;
     }
 
+    .stApp .sidebar-title.secundario {
+        margin-top: 28px;
+    }
+
     .stApp .filter-label {
         margin-top: 22px;
-        margin-bottom: 12px;
+        margin-bottom: 22px;
         color: var(--text) !important;
         font-size: 15px;
         font-weight: 600;
@@ -212,6 +231,7 @@ html(
         padding: 4px;
         border-radius: 10px;
         background: var(--segment-bg);
+        flex-wrap: wrap;
     }
 
     .stApp button[data-testid="stBaseButton-segmented_control"],
@@ -263,11 +283,56 @@ html(
     }
 
     /* =====================================================
+       BASE DE DADOS (download PNCP, upload, botão de análise)
+    ===================================================== */
+
+    .stApp div[data-baseweb="datepicker"] input {
+        color: var(--text) !important;
+    }
+
+    .stApp [data-testid="stFileUploaderDropzone"] {
+        background: #ffffff !important;
+        border-radius: 10px;
+        border: 1px dashed rgba(73, 96, 126, 0.35);
+    }
+
+    .stApp [data-testid="stFileUploaderDropzoneInstructions"] span,
+    .stApp [data-testid="stFileUploaderDropzoneInstructions"] small {
+        color: var(--muted) !important;
+    }
+
+    /* Botão secundário (baixar contratos) */
+    .stApp section[data-testid="stSidebar"] button[kind="secondary"] {
+        background: #ffffff !important;
+        color: var(--text) !important;
+        border: 1px solid rgba(73, 96, 126, 0.25) !important;
+        border-radius: 10px !important;
+        font-weight: 600;
+    }
+
+    /* Botão primário (fazer análise) */
+    .stApp section[data-testid="stSidebar"] button[kind="primary"] {
+        background: var(--primary) !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-weight: 700;
+    }
+
+    .stApp section[data-testid="stSidebar"] button[kind="primary"]:hover {
+        background: var(--primary-dark) !important;
+    }
+
+    .stApp section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+        color: var(--muted) !important;
+    }
+
+    /* =====================================================
        FONTE DOS DADOS
     ===================================================== */
 
     .source-card {
-        margin-top: 60px;
+        margin-top: 24px;
         padding: 18px;
         border-radius: 16px;
         background: #ffffff;
@@ -311,6 +376,26 @@ html(
         font-size: 15px;
     }
 
+    .stApp .page-badge {
+        display: inline-block;
+        margin-top: 10px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-family: var(--font-data);
+        font-size: 10px;
+        font-weight: 700;
+    }
+
+    .stApp .page-badge.exemplo {
+        background: rgba(251, 188, 44, 0.20);
+        color: #8a5a00 !important;
+    }
+
+    .stApp .page-badge.real {
+        background: var(--hover-green);
+        color: var(--primary-dark) !important;
+    }
+
     /* =====================================================
        KPIs
     ===================================================== */
@@ -340,13 +425,15 @@ html(
     ===================================================== */
 
     .dashboard-card,
-    .st-key-card_mapa {
+    .st-key-card_mapa,
+    .st-key-card_risco {
         padding: 22px 22px 26px 22px;
         border-radius: 16px;
         background: var(--surface);
     }
 
-    .st-key-card_mapa { gap: 0.75rem; }
+    .st-key-card_mapa,
+    .st-key-card_risco { gap: 0.75rem; }
 
     .card-header {
         display: flex;
@@ -378,6 +465,11 @@ html(
         font-size: 10px;
     }
 
+    .stApp .tag.risco {
+        background: rgba(251, 188, 44, 0.30);
+        color: #8a5a00 !important;
+    }
+
     /* =====================================================
        BARRAS DE CATEGORIA
     ===================================================== */
@@ -407,13 +499,21 @@ html(
         border-radius: 999px;
         background: var(--primary);
     }
+
+    /* =====================================================
+       TABELA DE RISCO
+    ===================================================== */
+
+    .st-key-card_risco div[data-testid="stDataFrame"] {
+        margin-top: 18px;
+    }
     </style>
     """
 )
 
 
 # =========================================================
-# SIDEBAR
+# SIDEBAR — BASE DE DADOS (download PNCP, upload, análise)
 # =========================================================
 
 with st.sidebar:
@@ -421,37 +521,180 @@ with st.sidebar:
     html(
         """
         <div class="sidebar-title">
-        <span class="icon">tune</span>
-        Filtros Dinâmicos
+        <span class="icon">cloud_download</span>
+        Base de Dados
         </div>
         """
     )
 
+    html('<div class="filter-label">Baixar contratos do PNCP</div>')
+
+    hoje = date.today()
+    intervalo = st.date_input(
+        "Período",
+        value=(hoje.replace(day=1), hoje),
+        label_visibility="collapsed",
+    )
+
+    baixar_clicado = st.button(
+        "Baixar contratos",
+        use_container_width=True,
+    )
+
+    if baixar_clicado:
+        if isinstance(intervalo, tuple) and len(intervalo) == 2:
+            data_inicial, data_final = intervalo
+            try:
+                barra = st.progress(0.0)
+                status = st.empty()
+
+                def _progresso_download(fracao: float, texto: str) -> None:
+                    barra.progress(min(max(fracao, 0.0), 1.0))
+                    status.caption(texto)
+
+                df_baixado, paginas_falhas, info_download = pncp.baixar_contratos(
+                    data_inicial, data_final, progresso=_progresso_download
+                )
+                barra.empty()
+                status.empty()
+
+                st.caption(
+                    f"PNCP reportou {formatar_num(info_download['total_paginas'])} página(s) no total "
+                    f"({formatar_num(info_download['registros_brutos'])} contratos no Brasil todo nesse "
+                    f"período, {formatar_num(info_download['registros_uf'])} no Ceará)."
+                )
+
+                if paginas_falhas:
+                    st.warning(
+                        f"⚠️ {len(paginas_falhas)} página(s) do PNCP não responderam mesmo após "
+                        f"tentar de novo — os dados baixados estão incompletos. Considere baixar "
+                        f"de novo ou reduzir o período."
+                    )
+
+                if df_baixado.empty:
+                    st.warning("Nenhum contrato encontrado nesse período.")
+                else:
+                    caminho = pncp.salvar_csv(df_baixado, data_inicial, data_final)
+                    st.success(f"{formatar_num(len(df_baixado))} contratos baixados e salvos.")
+            except pncp.ErroPNCP as erro:
+                st.error(str(erro))
+            except Exception as erro:  # falha de rede, parsing, etc.
+                st.error(f"Falha ao baixar: {erro}")
+        else:
+            st.warning("Escolha a data inicial e a data final.")
+
+    html('<div class="filter-label">Base para análise</div>')
+
+    arquivos_disponiveis = pncp.listar_arquivos()
+    opcao_upload = "Enviar arquivo (upload)"
+    opcoes_base = [p.name for p in arquivos_disponiveis] + [opcao_upload]
+
+    base_escolhida = st.selectbox(
+        "Base para análise",
+        options=opcoes_base,
+        label_visibility="collapsed",
+    )
+
+    arquivo_upload = None
+    if base_escolhida == opcao_upload:
+        arquivo_upload = st.file_uploader(
+            "CSV de contratos",
+            type="csv",
+            label_visibility="collapsed",
+        )
+
+    analisar_clicado = st.button(
+        "Fazer análise",
+        type="primary",
+        use_container_width=True,
+    )
+
+    if analisar_clicado:
+        df_bruto = None
+        try:
+            if base_escolhida == opcao_upload:
+                if arquivo_upload is None:
+                    st.warning("Envie um arquivo CSV antes de analisar.")
+                else:
+                    df_bruto = pd.read_csv(arquivo_upload)
+            else:
+                caminho = next(
+                    (p for p in arquivos_disponiveis if p.name == base_escolhida),
+                    None,
+                )
+                if caminho is not None:
+                    df_bruto = pd.read_csv(caminho)
+
+            if df_bruto is not None and not df_bruto.empty:
+                barra = st.progress(0.0)
+                status = st.empty()
+
+                def _progresso(fracao: float, texto: str) -> None:
+                    barra.progress(min(max(fracao, 0.0), 1.0))
+                    status.caption(texto)
+
+                resultado = executar_pipeline(df_bruto, progresso=_progresso)
+                st.session_state["resultado"] = resultado
+
+                barra.empty()
+                status.empty()
+
+                n_contratos = resultado["agregados"]["kpis"]["contratos"]
+                st.success(f"Análise concluída: {formatar_num(n_contratos)} contratos processados.")
+
+                info_anom = resultado["info_anomalias"]
+                if not info_anom.get("aplicado"):
+                    st.caption(info_anom.get("motivo", ""))
+            elif df_bruto is not None:
+                st.warning("O arquivo não tem contratos para analisar.")
+        except Exception as erro:
+            st.error(f"Não foi possível concluir a análise: {erro}")
+
+
+# =========================================================
+# ESTADO ATUAL DA ANÁLISE
+# =========================================================
+
+resultado = st.session_state.get("resultado")
+df_real = resultado["df"] if resultado is not None else None
+
+
+# =========================================================
+# SIDEBAR — FILTROS DINÂMICOS
+# =========================================================
+
+with st.sidebar:
+
+    html('<div class="sidebar-title secundario"><span class="icon">tune</span>Filtros Dinâmicos</div>')
+
     html('<div class="filter-label">Ano do Contrato</div>')
+    anos_opcoes = ["Todos"] + (sorted(df_real["ano"].unique()) if df_real is not None else ["2026", "2025"])
     ano = st.segmented_control(
         "Ano",
-        options=["2026", "2025", "Todos"],
-        default="2026",
+        options=anos_opcoes,
+        default="Todos",
         label_visibility="collapsed",
     )
 
     html('<div class="filter-label">Município</div>')
+    municipios_opcoes = ["Todos os municípios"] + (
+        sorted(df_real["municipio"].unique()) if df_real is not None
+        else ["Crateús", "Fortaleza", "Sobral", "Juazeiro do Norte"]
+    )
     municipio = st.selectbox(
         "Município",
-        options=[
-            "Todos os municípios",
-            "Crateús",
-            "Fortaleza",
-            "Sobral",
-            "Juazeiro do Norte",
-        ],
+        options=municipios_opcoes,
         label_visibility="collapsed",
     )
 
     html('<div class="filter-label">Categoria</div>')
+    categorias_opcoes = ["Todas as categorias"] + (
+        sorted(df_real["categoriaCurta"].dropna().unique()) if df_real is not None
+        else ["Serviços", "Aquisições", "Obras", "Outros"]
+    )
     categoria = st.selectbox(
         "Categoria",
-        options=["Todas as categorias", "Serviços", "Aquisições", "Obras", "Outros"],
+        options=categorias_opcoes,
         label_visibility="collapsed",
     )
 
@@ -478,14 +721,96 @@ with st.sidebar:
 
 
 # =========================================================
+# DADOS PARA O DASHBOARD (reais, filtrados, ou de exemplo)
+# =========================================================
+
+if df_real is not None:
+    df_filtrado = aplicar_filtros(df_real, ano=ano, municipio=municipio, categoria=categoria, risco=risco)
+    agregados = construir_agregados(df_filtrado)
+
+    data_municipios = agregados["data_municipios"]
+    describe_municipios = agregados["describe_municipios"]
+    populacao_municipios = agregados["populacao_municipios"]
+
+    kpis_valores = [
+        ("Contratos", formatar_num(agregados["kpis"]["contratos"])),
+        ("Valor Total", formatar_moeda(agregados["kpis"]["valor_total"])),
+        ("Municípios", formatar_num(agregados["kpis"]["municipios"])),
+        (
+            "Anomalias",
+            formatar_num(agregados["kpis"]["anomalias"])
+            if agregados["kpis"]["anomalias"] is not None
+            else "—",
+        ),
+    ]
+
+    categorias = agregados["categorias"]
+    top_risco = agregados["top_risco"]
+    badge_classe, badge_texto = "real", f"{formatar_num(len(df_filtrado))} contratos analisados"
+
+else:
+    # -------- DADOS DE EXEMPLO (nenhuma análise rodada ainda) --------
+    data_municipios = {
+        # "Fortaleza": 5_000_000,
+        # "Crateús": 1_200_000,
+        # "Sobral": 2_800_000,
+        # "Juazeiro do Norte": 3_500_000,
+    }
+
+    describe_municipios = {
+        # "Fortaleza": {
+        #     "count": 20, "mean": 250_000, "std": 85_000, "min": 30_000,
+        #     "25%": 120_000, "50%": 210_000, "75%": 340_000, "max": 800_000,
+        # },
+        # "Crateús": {
+        #     "count": 8, "mean": 150_000, "std": 40_000, "min": 50_000,
+        #     "25%": 90_000, "50%": 140_000, "75%": 200_000, "max": 320_000,
+        # },
+        # "Sobral": {
+        #     "count": 14, "mean": 200_000, "std": 55_000, "min": 35_000,
+        #     "25%": 110_000, "50%": 180_000, "75%": 290_000, "max": 620_000,
+        # },
+        # "Juazeiro do Norte": {
+        #     "count": 18, "mean": 194_444, "std": 67_000, "min": 25_000,
+        #     "25%": 95_000, "50%": 170_000, "75%": 280_000, "max": 710_000,
+        # },
+    }
+
+    populacao_municipios = {
+        # "2304400": {"populacao": 2_600_000},
+        # "2304103": {"populacao": 75_000},
+        # "2312908": {"populacao": 210_000},
+        # "2307304": {"populacao": 280_000},
+    }
+
+    kpis_valores = [
+        # ("Contratos", "—"),
+        # ("Valor Total", "—"),
+        # ("Municípios", formatar_num(len(carregar_geojson()["features"]))),
+        # ("Anomalias", "—"),
+    ]
+
+    categorias = [
+        # ("Serviços", 82),
+        # ("Aquisições", 68),
+        # ("Obras", 49),
+        # ("Outros", 31),
+    ]
+
+    top_risco = pd.DataFrame()
+    badge_classe, badge_texto = "exemplo", "Dados de exemplo — baixe e analise contratos para ver dados reais"
+
+
+# =========================================================
 # CABEÇALHO
 # =========================================================
 
 html(
-    """
+    f"""
     <div>
     <h1 class="page-title">Visão Geral</h1>
     <div class="page-subtitle">Contratos públicos dos municípios do Ceará</div>
+    <span class="page-badge {badge_classe}">{badge_texto}</span>
     </div>
     """
 )
@@ -495,14 +820,7 @@ html(
 # KPIs
 # =========================================================
 
-kpis = [
-    ("Contratos", "—"),
-    ("Valor Total", "—"),
-    ("Municípios", "184"),
-    ("Anomalias", "—"),
-]
-
-for col, (label, valor) in zip(st.columns(4, gap="small"), kpis):
+for col, (label, valor) in zip(st.columns(4, gap="small"), kpis_valores):
     with col:
         html(
             f"""
@@ -541,44 +859,10 @@ with map_col:
             """
         )
 
-        # -------- DADOS TEMPORÁRIOS --------
-        dados_teste = {
-            "Fortaleza": 5_000_000,
-            "Crateús": 1_200_000,
-            "Sobral": 2_800_000,
-            "Juazeiro do Norte": 3_500_000,
-        }
-
-        describe_teste = {
-            "Fortaleza": {
-                "count": 20, "mean": 250_000, "std": 85_000, "min": 30_000,
-                "25%": 120_000, "50%": 210_000, "75%": 340_000, "max": 800_000,
-            },
-            "Crateús": {
-                "count": 8, "mean": 150_000, "std": 40_000, "min": 50_000,
-                "25%": 90_000, "50%": 140_000, "75%": 200_000, "max": 320_000,
-            },
-            "Sobral": {
-                "count": 14, "mean": 200_000, "std": 55_000, "min": 35_000,
-                "25%": 110_000, "50%": 180_000, "75%": 290_000, "max": 620_000,
-            },
-            "Juazeiro do Norte": {
-                "count": 18, "mean": 194_444, "std": 67_000, "min": 25_000,
-                "25%": 95_000, "50%": 170_000, "75%": 280_000, "max": 710_000,
-            },
-        }
-
-        populacao_teste = {
-            "2304400": {"populacao": 2_600_000},
-            "2304103": {"populacao": 75_000},
-            "2312908": {"populacao": 210_000},
-            "2307304": {"populacao": 280_000},
-        }
-
         renderizar_mapa(
-            data_municipios=dados_teste,
-            describe_municipios=describe_teste,
-            populacao_municipios=populacao_teste,
+            data_municipios=data_municipios,
+            describe_municipios=describe_municipios,
+            populacao_municipios=populacao_municipios,
         )
 
 
@@ -588,20 +872,17 @@ with map_col:
 
 with categoria_col:
 
-    categorias = [
-        ("Serviços", 82),
-        ("Aquisições", 68),
-        ("Obras", 49),
-        ("Outros", 31),
-    ]
-
-    barras = "".join(
-        f'<div>'
-        f'<div class="bar-label">{nome}</div>'
-        f'<div class="bar-track"><div class="bar-fill" style="width:{pct}%;"></div></div>'
-        f'</div>'
-        for nome, pct in categorias
-    )
+    if categorias:
+        maior_pct = max(pct for _, pct in categorias) or 1
+        barras = "".join(
+            f'<div>'
+            f'<div class="bar-label">{nome}</div>'
+            f'<div class="bar-track"><div class="bar-fill" style="width:{pct}%;"></div></div>'
+            f'</div>'
+            for nome, pct in categorias
+        )
+    else:
+        barras = '<div class="bar-label">Nenhum contrato encontrado com esses filtros.</div>'
 
     html(
         f"""
@@ -612,3 +893,46 @@ with categoria_col:
         </div>
         """
     )
+
+
+# =========================================================
+# TOP CONTRATOS COM MAIOR RISCO
+# =========================================================
+
+if not top_risco.empty:
+
+    with st.container(key="card_risco"):
+
+        html(
+            """
+            <div class="card-header">
+            <div>
+            <div class="card-title">Contratos com Maior Risco</div>
+            <div class="card-subtitle">Apontados pelo Isolation Forest, do mais atípico ao menos atípico</div>
+            </div>
+            <div class="tag risco">Isolation Forest</div>
+            </div>
+            """
+        )
+
+        tabela = top_risco.rename(
+            columns={
+                "municipio": "Município",
+                "objeto": "Objeto do contrato",
+                "fornecedor": "Fornecedor",
+                "valor": "Valor (R$)",
+                "categoriaCurta": "Categoria",
+                "scoreRisco": "Índice de risco",
+                "motivoRisco": "Motivo",
+            }
+        )
+
+        st.dataframe(
+            tabela,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Valor (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Índice de risco": st.column_config.NumberColumn(format="%.1f"),
+            },
+        )
