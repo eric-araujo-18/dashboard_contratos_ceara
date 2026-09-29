@@ -558,7 +558,7 @@ with st.sidebar:
 
     baixar_clicado = st.button(
         "Baixar contratos",
-        use_container_width=True,
+        width="stretch",
     )
 
     if baixar_clicado:
@@ -623,10 +623,11 @@ with st.sidebar:
             label_visibility="collapsed",
         )
 
+    # botão "Fazer análise"
     analisar_clicado = st.button(
         "Fazer análise",
         type="primary",
-        use_container_width=True,
+        width="stretch",
     )
 
     if analisar_clicado:
@@ -969,7 +970,7 @@ if not top_risco.empty:
 
         st.dataframe(
             tabela,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Valor (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
