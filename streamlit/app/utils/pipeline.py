@@ -9,15 +9,64 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
+import numpy as np
 import pandas as pd
 
-from utils.anomalias import detectar_anomalias
+from utils.anomalias import ATRIBUTOS_ROTULO, detectar_anomalias
 from utils.classificador import classificar_por_regras, refinar_outros_com_ml
 from utils.ibge import carregar_populacao, populacao_por_codigo
 from utils.mapa import carregar_geojson
 from utils.tratamento import padronizar_texto, tratar_contratos
 
 Progresso = Callable[[float, str], None]
+
+# "valor" e "valor_habitante" são o mesmo conceito (o segundo é usado nos
+# municipais), então aparecem juntos no gráfico geral de fatores
+ROTULO_FATOR = {
+    "valor": "Valor acima do padrão da categoria",
+    "valor_habitante": "Valor acima do padrão da categoria",
+    "vigencia": ATRIBUTOS_ROTULO["vigencia"],
+    "concentracao": ATRIBUTOS_ROTULO["concentracao"],
+    "recorrencia": ATRIBUTOS_ROTULO["recorrencia"],
+}
+COLUNAS_SHAP = [f"shap_{a}" for a in ATRIBUTOS_ROTULO]
+COLUNAS_DESVIO = [f"desvio_{a}" for a in ATRIBUTOS_ROTULO]
+
+
+def fatias_shap(linha: pd.Series) -> list[tuple[str, float]]:
+    """[(rótulo, % da contribuição)] das contribuições SHAP positivas de um contrato."""
+    positivos: dict[str, float] = {}
+    for c in COLUNAS_SHAP:
+        atributo = c.removeprefix("shap_")
+        desvio = linha.get(f"desvio_{atributo}", 1.0)
+        # só conta o atributo que está de fato acima do padrão (mesma regra do motivo)
+        if pd.notna(linha.get(c)) and linha[c] > 0 and pd.notna(desvio) and desvio > 0:
+            rotulo = ROTULO_FATOR[atributo]
+            positivos[rotulo] = positivos.get(rotulo, 0.0) + float(linha[c])
+    total = sum(positivos.values())
+    if total <= 0:
+        return []
+    return sorted(((r, v / total * 100) for r, v in positivos.items()), key=lambda kv: -kv[1])
+
+
+def fatores_globais(df: pd.DataFrame) -> list[tuple[str, float]]:
+    """Peso médio de cada fator (SHAP) entre os contratos de risco Alto."""
+    if df.empty or "risco" not in df.columns:
+        return []
+    altos = df[df["risco"] == "Alto"]
+    colunas = [c for c in COLUNAS_SHAP if c in altos.columns]
+    if altos.empty or not colunas:
+        return []
+    positivos = altos[colunas].clip(lower=0).fillna(0)
+    for c in colunas:  # mesma regra do motivo: só atributos acima do padrão
+        desvio = f"desvio_{c.removeprefix('shap_')}"
+        if desvio in altos.columns:
+            positivos[c] = positivos[c].where(altos[desvio].fillna(0) > 0, 0.0)
+    total = positivos.sum(axis=1).replace(0, np.nan)
+    fatias = positivos.div(total, axis=0).mean() * 100
+    fatias.index = [ROTULO_FATOR[c.removeprefix("shap_")] for c in fatias.index]
+    fatias = fatias.groupby(level=0).sum().sort_values(ascending=False)
+    return [(nome, round(float(v), 1)) for nome, v in fatias.items() if v > 0]
 
 
 def _mapa_nome_geojson() -> dict:
@@ -110,7 +159,9 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
       - populacao_municipios: {codigo_ibge: {"populacao": n}}
       - kpis: contratos, valor_total, municipios (com contratos), anomalias
       - categorias: top categorias por valor [(nome, largura da barra %, fatia do total %)]
-      - top_risco: contratos com risco Alto, ordenados por scoreRisco
+      - top_risco: contratos com risco Alto, ordenados por scoreRisco (com SHAP)
+      - fatores_globais: peso médio de cada fator (SHAP) nos contratos Alto
+      - alertas_cadastro: contratos com possíveis erros de cadastro
     Funciona também com um df vazio (após aplicar filtros, por exemplo).
     """
     pop_por_nome = pop_por_nome if pop_por_nome is not None else carregar_populacao()
@@ -129,6 +180,8 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
             },
             "categorias": [],
             "top_risco": pd.DataFrame(),
+            "fatores_globais": [],
+            "alertas_cadastro": pd.DataFrame(),
         }
 
     # nome oficial do GeoJSON para cada linha (None quando não casa com nenhum município)
@@ -172,15 +225,26 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
     if "risco" in df.columns:
         top_risco = (
             df[df["risco"] == "Alto"]
-            .sort_values("scoreIF" if "scoreIF" in df.columns else "scoreRisco", ascending=False)
+            # percentil no grupo primeiro; o score bruto só desempata
+            .sort_values(
+                ["scoreRisco", "scoreIF"] if "scoreIF" in df.columns else ["scoreRisco"],
+                ascending=False,
+            )
             .loc[:, [c for c in [
-                "municipio", "esfera", "objeto", "fornecedor", "valor",
-                "categoriaCurta", "scoreRisco", "motivoRisco",
+                "municipio", "grupoModelo", "objeto", "fornecedor", "valor",
+                "categoriaCurta", "scoreRisco", "motivoRisco", *COLUNAS_SHAP, *COLUNAS_DESVIO,
             ] if c in df.columns]]
             .head(20)
         )
     else:
         top_risco = pd.DataFrame()
+
+    if "alertaCadastro" in df.columns:
+        alertas = df[df["alertaCadastro"] != ""].loc[:, [c for c in [
+            "municipio", "objeto", "fornecedor", "valor", "alertaCadastro",
+        ] if c in df.columns]]
+    else:
+        alertas = pd.DataFrame()
 
     return {
         "data_municipios": data_municipios,
@@ -189,6 +253,8 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
         "kpis": kpis,
         "categorias": categorias,
         "top_risco": top_risco,
+        "fatores_globais": fatores_globais(df),
+        "alertas_cadastro": alertas,
     }
 
 

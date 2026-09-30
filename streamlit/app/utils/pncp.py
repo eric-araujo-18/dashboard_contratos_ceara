@@ -16,20 +16,35 @@ os contratos do Brasil inteiro e filtrar o Ceará aqui. Para acelerar:
    que evita que publicações novas "empurrem" as páginas durante o download.
 2. Filtro da UF página a página: não guarda em memória os contratos do
    resto do país, só os do Ceará.
-3. Uma sessão HTTP por thread: reaproveita a conexão (keep-alive) em vez
-   de abrir uma conexão TLS nova a cada página, sem compartilhar a mesma
-   Session entre threads (o que causava falhas silenciosas no Windows).
-4. Pausa só entre tentativas que falharam, não antes de toda requisição,
-   respeitando o "Retry-After" do servidor e sem repetir erros permanentes.
-5. Nenhuma página é perdida em silêncio: o que falhar depois da segunda
-   passada é devolvido para o app avisar (o notebook original trocava a
-   página por uma lista vazia sem avisar).
+3. Uma sessão HTTP por thread: reaproveita a conexão (keep-alive) sem
+   compartilhar a mesma Session entre threads.
+4. Nenhuma página é perdida em silêncio: o que falhar depois da segunda
+   passada é devolvido para o app avisar.
+
+Por que falhava e o que mudou (v2)
+----------------------------------
+- O firewall (WAF) do PNCP recusa clientes sem User-Agent de navegador.
+  O requests manda "python-requests/x.y", então agora mandamos um
+  User-Agent de navegador.
+- O limite de requisições nem sempre vem como HTTP 429: às vezes o
+  servidor responde 200 com uma página HTML. Antes isso virava um erro de
+  JSON e uma tentativa perdida; agora é tratado como "vá mais devagar".
+- 10 threads disparando ao mesmo tempo estouravam o limite do servidor.
+  Agora há um controle de ritmo GLOBAL (todas as threads juntas): um
+  intervalo mínimo entre requisições que dobra quando o servidor reclama
+  e volta a diminuir aos poucos quando tudo corre bem. Um 429 pausa todas
+  as threads, não só a que recebeu o erro.
+- Mais tentativas, com espera exponencial (2, 4, 8, 16 s...) e jitter.
+- Diagnóstico: o motivo de cada tentativa que falhou é contado e devolvido
+  em info["motivos_falha"], para saber se o problema é tempo esgotado,
+  limite do servidor, conexão derrubada etc.
 """
 from __future__ import annotations
 
 import random
 import threading
 import time
+from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date, timedelta
 from pathlib import Path
@@ -42,18 +57,72 @@ from utils.config import CONTRATOS_DIR
 
 BASE_URL = "https://pncp.gov.br/api/consulta/v1/contratos"
 
-TAMANHO_PAGINA = 500   # máximo aceito pelo endpoint /contratos
-MAX_WORKERS = 10       # mesmo valor do notebook, que já funcionava bem; se falhar muito, reduza
-MAX_WORKERS_RETRY = 3
-TENTATIVAS = 3
-TIMEOUT = 45
-STATUS_TEMPORARIOS = {429, 500, 502, 503, 504}  # vale a pena tentar de novo
+HEADERS = {
+    "Accept": "application/json",
+    # o WAF do PNCP barra clientes sem User-Agent de navegador
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0 Safari/537.36"
+    ),
+}
+
+TAMANHO_PAGINA = 500     # máximo aceito pelo endpoint /contratos
+MAX_WORKERS = 4          # conexões simultâneas na 1ª passada
+MAX_WORKERS_RETRY = 2    # conexões simultâneas na 2ª passada
+TENTATIVAS = 5
+TIMEOUT = (10, 60)       # (conectar, ler) em segundos
+INTERVALO_MIN = 0.25     # intervalo mínimo entre requisições (≈ 4 por segundo no total)
+INTERVALO_MAX = 3.0      # teto quando o servidor está reclamando
+ESPERA_MAX = 60          # teto da espera entre tentativas
+STATUS_TEMPORARIOS = {408, 429, 500, 502, 503, 504}  # vale a pena tentar de novo
 
 Progresso = Callable[[float, str], None]
 
 
 class ErroPNCP(RuntimeError):
     """Falha ao consultar o PNCP."""
+
+
+# ---------------------------------------------------------------------------
+# CONTROLE DE RITMO (compartilhado por todas as threads de um download)
+# ---------------------------------------------------------------------------
+
+class _Controle:
+    """
+    Distribui as requisições no tempo e reage ao servidor:
+    - cada requisição espera sua "vez" (intervalo mínimo entre elas);
+    - quando o servidor pede calma, todas as threads pausam e o intervalo dobra;
+    - a cada sucesso o intervalo diminui um pouco, até voltar ao mínimo.
+    Também conta os motivos das tentativas que falharam.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._proxima = 0.0
+        self._pausa_ate = 0.0
+        self._intervalo = INTERVALO_MIN
+        self.motivos: Counter[str] = Counter()
+
+    def aguardar_vez(self) -> None:
+        with self._lock:
+            agora = time.monotonic()
+            vez = max(agora, self._proxima, self._pausa_ate)
+            self._proxima = vez + self._intervalo
+        if vez > agora:
+            time.sleep(vez - agora)
+
+    def desacelerar(self, pausa: float) -> None:
+        with self._lock:
+            self._pausa_ate = max(self._pausa_ate, time.monotonic() + pausa)
+            self._intervalo = min(self._intervalo * 2, INTERVALO_MAX)
+
+    def sucesso(self) -> None:
+        with self._lock:
+            self._intervalo = max(self._intervalo * 0.9, INTERVALO_MIN)
+
+    def registrar(self, motivo: str) -> None:
+        with self._lock:
+            self.motivos[motivo] += 1
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +137,7 @@ def _sessao() -> requests.Session:
     sessao = getattr(_local, "sessao", None)
     if sessao is None:
         sessao = requests.Session()
-        sessao.headers.update({"Accept": "application/json"})
+        sessao.headers.update(HEADERS)
         _local.sessao = sessao
     return sessao
 
@@ -83,29 +152,68 @@ def _descartar_sessao() -> None:
         _local.sessao = None
 
 
-def _consultar_pagina(params: dict) -> Optional[dict]:
+def _parece_json(resposta: requests.Response) -> bool:
+    tipo = resposta.headers.get("Content-Type", "").lower()
+    if "json" in tipo:
+        return True
+    return resposta.text.lstrip()[:1] in ("{", "[")
+
+
+def _consultar_pagina(params: dict, controle: _Controle) -> Optional[dict]:
     """Retorna o JSON da página ou None se todas as tentativas falharem."""
     for tentativa in range(1, TENTATIVAS + 1):
-        espera = tentativa * 2
+        controle.aguardar_vez()
+        espera = min(ESPERA_MAX, 2 ** tentativa)
+        motivo = ""
         try:
             resposta = _sessao().get(BASE_URL, params=params, timeout=TIMEOUT)
-            if resposta.status_code == 200:
-                return resposta.json()
-            if resposta.status_code == 204:  # sem conteúdo
+            codigo = resposta.status_code
+
+            if codigo == 204:  # sem conteúdo
+                controle.sucesso()
                 return {"data": [], "totalPaginas": 0}
-            if resposta.status_code not in STATUS_TEMPORARIOS:
-                return None  # 400, 404...: tentar de novo não resolve
-            # 429 = "muitas requisições": respeita o tempo pedido pelo servidor
-            retry_after = resposta.headers.get("Retry-After", "")
-            if retry_after.isdigit():
-                espera = max(espera, int(retry_after))
-        except (requests.RequestException, ValueError, OSError):
-            # OSError cobre erros de socket que às vezes escapam sem virar
-            # requests.RequestException (ex.: WinError 10054 no Windows).
-            # Descarta a sessão para a próxima tentativa abrir uma conexão nova.
+
+            if codigo == 200:
+                if _parece_json(resposta):
+                    try:
+                        dados = resposta.json()
+                        controle.sucesso()
+                        return dados
+                    except ValueError:
+                        motivo = "JSON incompleto/inválido"
+                else:
+                    # limite do servidor disfarçado de 200 com página HTML
+                    motivo = "HTML no lugar de JSON (limite do servidor)"
+                    controle.desacelerar(espera)
+
+            elif codigo in STATUS_TEMPORARIOS:
+                motivo = f"HTTP {codigo}"
+                retry_after = resposta.headers.get("Retry-After", "")
+                if retry_after.isdigit():
+                    espera = max(espera, min(int(retry_after), 120))
+                if codigo in (429, 503):
+                    controle.desacelerar(espera)
+
+            else:
+                # 400, 404, 422...: tentar de novo não resolve
+                controle.registrar(f"HTTP {codigo} (erro permanente)")
+                return None
+
+        except requests.Timeout:
+            motivo = "tempo esgotado"
             _descartar_sessao()
+        except requests.ConnectionError:
+            motivo = "conexão recusada/derrubada"
+            _descartar_sessao()
+            controle.desacelerar(espera)
+        except (requests.RequestException, OSError) as erro:
+            # OSError cobre erros de socket que escapam (ex.: WinError 10054)
+            motivo = f"erro de rede ({type(erro).__name__})"
+            _descartar_sessao()
+
+        controle.registrar(motivo)
         if tentativa < TENTATIVAS:
-            # o "jitter" evita que as 10 threads tentem de novo no mesmo instante
+            # o "jitter" evita que as threads tentem de novo no mesmo instante
             time.sleep(espera + random.uniform(0, 1))
     return None
 
@@ -133,7 +241,7 @@ def baixar_contratos(
 
     Retorna (DataFrame da UF, lista de páginas que falharam mesmo após a
     segunda tentativa no formato "AAAAMMDD/página", dict com diagnóstico:
-    total_paginas, registros_brutos, registros_uf).
+    total_paginas, registros_brutos, registros_uf, motivos_falha).
     """
     if data_inicial > data_final:
         raise ValueError("A data inicial não pode ser maior que a data final.")
@@ -143,6 +251,7 @@ def baixar_contratos(
             progresso(min(max(fracao, 0.0), 1.0), texto)
 
     dias = [data_inicial + timedelta(days=i) for i in range((data_final - data_inicial).days + 1)]
+    controle = _Controle()
 
     avisar(0.0, "Consultando o PNCP...")
 
@@ -179,13 +288,20 @@ def baixar_contratos(
         demais páginas daquele dia entram na mesma fila (sem esperar o fim).
         """
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futuros = {pool.submit(_consultar_pagina, params(dia, p)): (dia, p) for dia, p in tarefas}
+            def enviar(dia: date, pagina: int):
+                return pool.submit(_consultar_pagina, params(dia, pagina), controle)
+
+            futuros = {enviar(dia, p): (dia, p) for dia, p in tarefas}
 
             while futuros:
                 concluidos, _ = wait(futuros, return_when=FIRST_COMPLETED)
                 for futuro in concluidos:
                     dia, pagina = futuros.pop(futuro)
-                    resposta = futuro.result()
+                    try:
+                        resposta = futuro.result()
+                    except Exception as erro:  # nunca deixa uma thread derrubar o download
+                        controle.registrar(f"erro inesperado ({type(erro).__name__})")
+                        resposta = None
                     info = estado[dia]
 
                     if resposta is None:
@@ -200,7 +316,7 @@ def baixar_contratos(
                             total = max(int(resposta.get("totalPaginas") or 1), 1)
                             info["total"] = total
                             for p in range(2, total + 1):
-                                futuros[pool.submit(_consultar_pagina, params(dia, p))] = (dia, p)
+                                futuros[enviar(dia, p)] = (dia, p)
 
                     if retentativa:
                         avisar(0.96, f"Tentando de novo as páginas que falharam ({len(futuros)} na fila)...")
@@ -215,6 +331,7 @@ def baixar_contratos(
     if falhas:
         for info in estado.values():
             info["falhas"] = []
+        time.sleep(5)  # dá um respiro ao servidor antes de insistir
         baixar(falhas, MAX_WORKERS_RETRY, retentativa=True)
 
     # --- 3) junta os dias ---
@@ -223,9 +340,13 @@ def baixar_contratos(
     total_paginas = sum(info["total"] or 0 for info in estado.values())
 
     falhas_finais = [f"{dia:%Y%m%d}/{p}" for dia, info in estado.items() for p in info["falhas"]]
+    motivos = dict(controle.motivos.most_common())
 
     if len(falhas_finais) == sum((i["total"] or 1) for i in estado.values()):
-        raise ErroPNCP("Não foi possível consultar o PNCP agora. Tente novamente em instantes.")
+        principal = next(iter(motivos), "motivo desconhecido")
+        raise ErroPNCP(
+            f"Não foi possível consultar o PNCP agora ({principal}). Tente novamente em instantes."
+        )
 
     df = pd.json_normalize(registros_uf) if registros_uf else pd.DataFrame()
     if "numeroControlePNCP" in df.columns:
@@ -238,6 +359,8 @@ def baixar_contratos(
         "total_paginas": total_paginas,
         "registros_brutos": registros_brutos,
         "registros_uf": len(df),
+        # quantas TENTATIVAS falharam por motivo (inclui as que deram certo depois)
+        "motivos_falha": motivos,
     }
     return df, sorted(falhas_finais), info
 

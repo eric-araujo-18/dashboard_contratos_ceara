@@ -5,7 +5,7 @@ import streamlit as st
 
 from utils import pncp
 from utils.mapa import renderizar_mapa
-from utils.pipeline import aplicar_filtros, construir_agregados, executar_pipeline
+from utils.pipeline import aplicar_filtros, construir_agregados, executar_pipeline, fatias_shap
 
 
 # =========================================================
@@ -526,6 +526,102 @@ html(
     .st-key-card_risco div[data-testid="stDataFrame"] {
         margin-top: 18px;
     }
+
+    /* =====================================================
+       EXPLICAÇÃO DO MODELO (SHAP)
+    ===================================================== */
+
+    .st-key-card_shap {
+        padding: 22px 22px 26px 22px;
+        border-radius: 16px;
+        background: var(--surface);
+        gap: 0.75rem;
+    }
+
+    .bar-fill.shap { background: #d98e04; }
+
+    .stApp .shap-subtitulo {
+        margin-top: 8px;
+        color: var(--text) !important;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .stApp .shap-nota {
+        margin-top: 16px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #ffffff;
+        color: var(--muted) !important;
+        font-size: 12px;
+        line-height: 1.6;
+    }
+
+    /* =====================================================
+       ERROS DE CADASTRO (expander)
+    ===================================================== */
+
+    .stApp [data-testid="stExpander"] details {
+        border: none;
+        border-radius: 16px;
+        background: var(--surface);
+    }
+
+    .stApp [data-testid="stExpander"] summary,
+    .stApp [data-testid="stExpander"] summary p {
+        color: var(--text) !important;
+        font-weight: 600;
+    }
+
+    /* =====================================================
+       TEMA CLARO FORÇADO
+       Se o config.toml não for lido (ex.: Streamlit Cloud com o arquivo
+       fora da raiz do repositório), o Streamlit segue o tema do navegador
+       e os campos da sidebar ficavam escuros. Estas regras garantem o
+       visual claro mesmo nesse caso.
+    ===================================================== */
+
+    :root { color-scheme: light; }
+
+    section[data-testid="stSidebar"] {
+        background: var(--sidebar-bg) !important;
+    }
+
+    .stApp div[data-baseweb="input"],
+    .stApp div[data-baseweb="input"] > div,
+    .stApp div[data-baseweb="base-input"],
+    .stApp div[data-baseweb="datepicker"] > div {
+        background: #ffffff !important;
+        border-radius: 10px;
+    }
+
+    .stApp div[data-baseweb="input"] input,
+    .stApp div[data-baseweb="base-input"] input {
+        background: #ffffff !important;
+        color: var(--text) !important;
+        -webkit-text-fill-color: var(--text) !important;
+    }
+
+    div[data-baseweb="calendar"],
+    div[data-baseweb="calendar"] * {
+        background-color: #ffffff;
+        color: var(--text);
+    }
+
+    .stApp section[data-testid="stSidebar"] label,
+    .stApp section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+        color: var(--text) !important;
+    }
+
+    .stApp [data-testid="stFileUploaderDropzone"] button {
+        background: #ffffff !important;
+        color: var(--text) !important;
+        border: 1px solid rgba(73, 96, 126, 0.25) !important;
+    }
+
+    .stApp [data-testid="stProgress"] div[role="progressbar"] > div > div {
+        background: var(--primary) !important;
+    }
     </style>
     """
 )
@@ -678,6 +774,7 @@ with st.sidebar:
 
 resultado = st.session_state.get("resultado")
 df_real = resultado["df"] if resultado is not None else None
+metodo_shap = (resultado or {}).get("info_anomalias", {}).get("metodo_shap") or "valores SHAP"
 
 
 # =========================================================
@@ -747,7 +844,7 @@ with st.sidebar:
     html('<div class="filter-label">Nível de Risco</div>')
     risco = st.selectbox(
         "Nível de Risco",
-        options=["Todos", "Baixo", "Médio", "Alto"],
+        options=["Todos", "Alto", "Médio", "Baixo", "Não avaliado"],
         label_visibility="collapsed",
     )
 
@@ -799,6 +896,8 @@ if df_real is not None:
 
     categorias = agregados["categorias"]
     top_risco = agregados["top_risco"]
+    fatores = agregados["fatores_globais"]
+    alertas = agregados["alertas_cadastro"]
     badge_classe, badge_texto = "real", f"{formatar_num(len(df_filtrado))} contratos analisados"
 
 else:
@@ -817,6 +916,8 @@ else:
     categorias = []
 
     top_risco = pd.DataFrame()
+    fatores = []
+    alertas = pd.DataFrame()
     badge_classe, badge_texto = "exemplo", "Nenhuma análise carregada — escolha uma base e clique em Fazer análise"
 
 
@@ -955,16 +1056,18 @@ if not top_risco.empty:
             """
         )
 
-        tabela = top_risco.rename(
+        tabela = top_risco.drop(
+            columns=[c for c in top_risco.columns if c.startswith(("shap_", "desvio_"))]
+        ).rename(
             columns={
                 "municipio": "Município",
-                "esfera": "Esfera",
+                "grupoModelo": "Comparado com",
                 "objeto": "Objeto do contrato",
                 "fornecedor": "Fornecedor",
                 "valor": "Valor (R$)",
                 "categoriaCurta": "Categoria",
                 "scoreRisco": "Índice de risco",
-                "motivoRisco": "Motivo",
+                "motivoRisco": "Principais fatores (SHAP)",
             }
         )
 
@@ -974,6 +1077,116 @@ if not top_risco.empty:
             hide_index=True,
             column_config={
                 "Valor (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
-                "Índice de risco": st.column_config.NumberColumn(format="%.1f"),
+                "Índice de risco": st.column_config.NumberColumn(
+                    format="%.1f",
+                    help="Percentil de atipicidade dentro do grupo de comparação (esfera e tipo de documento).",
+                ),
+                "Comparado com": st.column_config.TextColumn(
+                    help="Cada grupo tem o seu próprio modelo: o contrato só é comparado com contratos parecidos.",
+                ),
+                "Principais fatores (SHAP)": st.column_config.TextColumn(
+                    help="Atributos que mais pesaram, com a fatia da contribuição SHAP entre colchetes.",
+                    width="large",
+                ),
             },
+        )
+
+
+# =========================================================
+# EXPLICAÇÃO DO MODELO (SHAP)
+# =========================================================
+
+def barras_html(itens, classe="") -> str:
+    if not itens:
+        return '<div class="bar-label">Sem contribuições positivas para exibir.</div>'
+    return "".join(
+        f'<div>'
+        f'<div class="bar-label">{nome} · {str(round(pct, 1)).replace(".", ",")}%</div>'
+        f'<div class="bar-track"><div class="bar-fill {classe}" style="width:{pct:.1f}%;"></div></div>'
+        f'</div>'
+        for nome, pct in itens
+    )
+
+
+if not top_risco.empty:
+
+    with st.container(key="card_shap"):
+
+        html(
+            f"""
+            <div class="card-header">
+            <div>
+            <div class="card-title">Explicação do Modelo</div>
+            <div class="card-subtitle">Quanto cada atributo contribuiu para o contrato ser considerado atípico · {metodo_shap}</div>
+            </div>
+            <div class="tag risco">SHAP</div>
+            </div>
+            """
+        )
+
+        col_contrato, col_geral = st.columns([3, 2], gap="large")
+
+        with col_contrato:
+            html('<div class="shap-subtitulo">Por que este contrato foi apontado?</div>')
+
+            escolhido = st.selectbox(
+                "Contrato",
+                options=list(top_risco.index),
+                format_func=lambda i: (
+                    f"{top_risco.at[i, 'municipio']} · {top_risco.at[i, 'categoriaCurta']} · "
+                    f"{formatar_moeda(top_risco.at[i, 'valor'])}"
+                ),
+                label_visibility="collapsed",
+                key="shap_contrato",
+            )
+            linha = top_risco.loc[escolhido]
+
+            html(f'<div class="bars">{barras_html(fatias_shap(linha), "shap")}</div>')
+            html(
+                f"""
+                <div class="shap-nota">
+                <b>{linha.get("motivoRisco", "")}</b><br>
+                Índice {str(linha.get("scoreRisco", "")).replace(".", ",")} dentro do grupo
+                “{linha.get("grupoModelo", "")}”: está entre os contratos mais atípicos desse grupo.
+                </div>
+                """
+            )
+
+        with col_geral:
+            html('<div class="shap-subtitulo">O que mais pesa nos contratos de risco alto</div>')
+            html(f'<div class="bars">{barras_html(fatores)}</div>')
+            html(
+                """
+                <div class="shap-nota">
+                Média das contribuições SHAP dos contratos de risco Alto com os filtros atuais.
+                Atipicidade estatística não significa irregularidade: indica onde vale olhar primeiro.
+                </div>
+                """
+            )
+
+
+# =========================================================
+# POSSÍVEIS ERROS DE CADASTRO
+# =========================================================
+
+if df_real is not None and not alertas.empty:
+
+    with st.expander(f"Possíveis erros de cadastro ({formatar_num(len(alertas))})"):
+        st.caption(
+            "Contratos com valor simbólico, datas inconsistentes ou assinatura depois da "
+            "publicação. Ficam separados do risco porque costumam ser erro de preenchimento."
+        )
+        st.dataframe(
+            alertas.rename(
+                columns={
+                    "municipio": "Município",
+                    "objeto": "Objeto do contrato",
+                    "fornecedor": "Fornecedor",
+                    "valor": "Valor (R$)",
+                    "alertaCadastro": "Alerta",
+                }
+            ),
+            width="stretch",
+            hide_index=True,
+            column_config={"Valor (R$)": st.column_config.NumberColumn(format="R$ %.2f")},
         )
