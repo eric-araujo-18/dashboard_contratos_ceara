@@ -348,24 +348,69 @@ function formatInteger(value) {
     });
 }
 
+// valores grandes de forma curta: R$ 143,7 mi, R$ 86,9 bi
+function formatCompactCurrency(value) {
+    return Number(value || 0).toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        notation: "compact",
+        maximumFractionDigits: 1
+    });
+}
+
+function formatPercent(fraction) {
+    return Number(fraction || 0).toLocaleString("pt-BR", {
+        style: "percent",
+        maximumFractionDigits: 2
+    });
+}
+
 
 /* ====================================================
-   POPULAÇÃO
+   POPULAÇÃO E PIB (IBGE)
 ==================================================== */
 
-function getPopulacaoByFeature(feature) {
+function getIbgeByFeature(feature) {
     const codigo = String(feature?.properties?.id || "");
-    if (!codigo) return null;
+    return codigo ? (populacaoFromIBGE[codigo] || null) : null;
+}
 
-    const dados = populacaoFromIBGE[codigo];
+function getIbgeByMunicipio(nomeMunicipio) {
+    const feature = geojson.features.find(
+        item => item.properties.name === nomeMunicipio
+    );
+    return feature ? getIbgeByFeature(feature) : null;
+}
+
+function getPopulacaoByFeature(feature) {
+    const dados = getIbgeByFeature(feature);
     return dados ? dados.populacao : null;
 }
 
 function getPopulacaoByMunicipio(nomeMunicipio) {
-    const feature = geojson.features.find(
-        item => item.properties.name === nomeMunicipio
-    );
-    return feature ? getPopulacaoByFeature(feature) : null;
+    const dados = getIbgeByMunicipio(nomeMunicipio);
+    return dados ? dados.populacao : null;
+}
+
+// PIB do município (IBGE, em reais); null se não houver
+function getPibByFeature(feature) {
+    const dados = getIbgeByFeature(feature);
+    return dados && dados.pib ? dados.pib : null;
+}
+
+function getPibByMunicipio(nomeMunicipio) {
+    const dados = getIbgeByMunicipio(nomeMunicipio);
+    return dados && dados.pib ? dados.pib : null;
+}
+
+// rótulo com o ano do PIB vindo do Python (o mais recente publicado pelo IBGE)
+function rotuloPib(dados, prefixo) {
+    return dados && dados.pibAno ? `${prefixo} (${dados.pibAno})` : prefixo;
+}
+
+// valor contratado no município (com os filtros atuais) em relação ao PIB
+function textoContratadoPib(total, pib) {
+    return pib ? formatPercent(total / pib) : "Não disponível";
 }
 
 
@@ -390,7 +435,7 @@ function mostrarPainelVazio() {
                 <h2>Selecione um município</h2>
                 <p>
                     Clique no mapa para filtrar o dashboard pelo município e ver
-                    população, valor contratado e o resumo estatístico dos contratos.
+                    população, PIB, valor contratado e o resumo estatístico dos contratos.
                     Clique fora do mapa para voltar a todos.
                 </p>
             </div>
@@ -403,6 +448,7 @@ function updateInfoPanel(nomeMunicipio) {
     const info = describeFromStreamlit[nomeMunicipio];
     const total = dataFromStreamlit[nomeMunicipio] || 0;
     const populacao = getPopulacaoByMunicipio(nomeMunicipio);
+    const pib = getPibByMunicipio(nomeMunicipio);
 
     const populacaoTexto = populacao
         ? formatInteger(populacao)
@@ -413,6 +459,11 @@ function updateInfoPanel(nomeMunicipio) {
         : "Sem contratos";
 
     let stats = statRow("População IBGE", populacaoTexto);
+    stats += statRow(
+        rotuloPib(getIbgeByMunicipio(nomeMunicipio), "PIB IBGE"),
+        pib ? formatCompactCurrency(pib) : "Não encontrado"
+    );
+    stats += statRow("Contratado / PIB", textoContratadoPib(total, pib));
 
     if (info) {
         stats += statRow("Quantidade", formatNumber(info.count));
@@ -542,6 +593,7 @@ function renderChart() {
             const valor = dataFromStreamlit[nome] || 0;
             const info = describeFromStreamlit[nome];
             const populacao = getPopulacaoByFeature(d);
+            const pib = getPibByFeature(d);
 
             const populacaoTexto = populacao
                 ? formatInteger(populacao)
@@ -552,7 +604,9 @@ function renderChart() {
                 .html(`
                     <strong>${nome}</strong>
                     População: ${populacaoTexto}<br>
+                    ${rotuloPib(getIbgeByFeature(d), "PIB")}: ${pib ? formatCompactCurrency(pib) : "Não encontrado"}<br>
                     Total: ${formatCurrency(valor)}<br>
+                    Contratado / PIB: ${textoContratadoPib(valor, pib)}<br>
                     ${info
                         ? `Contratos: ${formatNumber(info.count)}`
                         : "Sem contratos"}

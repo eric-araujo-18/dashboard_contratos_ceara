@@ -14,9 +14,10 @@ import pandas as pd
 
 from utils.anomalias import ATRIBUTOS_ROTULO, detectar_anomalias
 from utils.classificador import classificar_por_regras, refinar_outros_com_ml
-from utils.ibge import carregar_populacao, populacao_por_codigo
+from utils.ibge import ano_pib, carregar_pib, carregar_populacao, populacao_por_codigo
+from utils.config import DATA_DIR
 from utils.mapa import carregar_geojson
-from utils.tratamento import padronizar_texto, tratar_contratos
+from utils.tratamento import COLUNAS_MANTER, padronizar_texto, tratar_contratos
 
 Progresso = Callable[[float, str], None]
 
@@ -30,6 +31,20 @@ ROTULO_FATOR = {
     "recorrencia": ATRIBUTOS_ROTULO["recorrencia"],
 }
 COLUNAS_SHAP = [f"shap_{a}" for a in ATRIBUTOS_ROTULO]
+
+# Base de dados final do processamento (seção "Processamento de dados"):
+# os 15 atributos do tratamento + categoria (recategorização) + população e
+# PIB (IBGE). É salva a cada análise, antes da detecção de anomalias.
+COLUNAS_BASE_FINAL = [*COLUNAS_MANTER.values(), "categoria", "populacao", "pib"]
+CSV_BASE_FINAL = DATA_DIR / "processed" / "contratos_tratados.csv"
+
+
+def salvar_base_final(df: pd.DataFrame) -> None:
+    """Grava os 18 atributos da base final; a base original não é alterada."""
+    CSV_BASE_FINAL.parent.mkdir(parents=True, exist_ok=True)
+    colunas = [c for c in COLUNAS_BASE_FINAL if c in df.columns]
+    # utf-8-sig para o Excel abrir os acentos certos
+    df[colunas].to_csv(CSV_BASE_FINAL, index=False, encoding="utf-8-sig")
 COLUNAS_DESVIO = [f"desvio_{a}" for a in ATRIBUTOS_ROTULO]
 
 
@@ -113,7 +128,7 @@ def _nome_geojson(df: pd.DataFrame) -> pd.Series:
     código IBGE (robusto a grafias diferentes, ex.: Itapajé x Itapagé)
     e usa o nome normalizado só como reserva.
     """
-    por_nome = df["municipioNorm"].map(_mapa_nome_geojson())
+    por_nome = df["municipio"].map(padronizar_texto).map(_mapa_nome_geojson())
     if "codigoIbge" not in df.columns:
         return por_nome
     return df["codigoIbge"].map(_mapa_codigo_geojson()).fillna(por_nome)
@@ -121,7 +136,7 @@ def _nome_geojson(df: pd.DataFrame) -> pd.Series:
 
 def _populacao(df: pd.DataFrame, pop_por_nome: dict) -> pd.Series:
     """População do município de cada contrato: pelo código IBGE, com o nome como reserva."""
-    por_nome = df["municipioNorm"].map(lambda nome: pop_por_nome.get(nome, {}).get("populacao"))
+    por_nome = df["municipio"].map(padronizar_texto).map(lambda nome: pop_por_nome.get(nome, {}).get("populacao"))
     if "codigoIbge" not in df.columns:
         return por_nome
     por_codigo = {str(d["codigo_ibge"]): d["populacao"] for d in pop_por_nome.values()}
@@ -149,9 +164,12 @@ def executar_pipeline(
     df = classificar_por_regras(df)
     df, info_classificacao = refinar_outros_com_ml(df)
 
-    avisar(0.55, "Cruzando com a população do IBGE...")
+    avisar(0.55, "Cruzando com a população e o PIB do IBGE...")
     pop_por_nome = carregar_populacao()
     df["populacao"] = _populacao(df, pop_por_nome)
+    # PIB do município (IBGE, em reais, ano mais recente publicado), pelo código IBGE; NaN se não houver
+    df["pib"] = df["codigoIbge"].map(carregar_pib())
+    salvar_base_final(df)
 
     avisar(0.70, "Procurando contratos atípicos (Isolation Forest)...")
     df, info_anomalias = detectar_anomalias(df)
@@ -176,7 +194,7 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
     detectadas), monta:
       - data_municipios: {nome oficial do GeoJSON: soma do valor}
       - describe_municipios: {nome oficial: describe() do valor}
-      - populacao_municipios: {codigo_ibge: {"populacao": n}}
+      - populacao_municipios: {codigo_ibge: {"populacao": n, "pib": x, "pibAno": ano}} (IBGE, para o mapa)
       - kpis: contratos, valor_total, municipios (com contratos), anomalias
       - categorias: top categorias por valor [(nome, largura da barra %, fatia do total %)]
       - top_risco: contratos com risco Alto, ordenados por scoreRisco (com SHAP)
@@ -185,7 +203,7 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
     Funciona também com um df vazio (após aplicar filtros, por exemplo).
     """
     pop_por_nome = pop_por_nome if pop_por_nome is not None else carregar_populacao()
-    populacao_municipios = populacao_por_codigo(pop_por_nome)
+    populacao_municipios = populacao_por_codigo(pop_por_nome, carregar_pib(), ano_pib())
 
     if df.empty:
         return {
@@ -221,7 +239,7 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
     # scoreRisco só é > 0 em algum contrato quando o Isolation Forest
     # realmente rodou (por padrão, sem análise aplicada, tudo fica 0.0).
     tem_risco = "scoreRisco" in df.columns and (df["scoreRisco"] > 0).any()
-    anomalias_count = int(df["anomalia"].sum()) if tem_risco and "anomalia" in df.columns else None
+    anomalias_count = int((df["risco"] == "Alto").sum()) if tem_risco and "risco" in df.columns else None
 
     kpis = {
         "contratos": int(len(df)),
@@ -231,8 +249,8 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
     }
 
     categorias_valor = (
-        df.groupby("categoriaCurta")["valor"].sum().sort_values(ascending=False)
-        if "categoriaCurta" in df.columns
+        df.groupby("categoria")["valor"].sum().sort_values(ascending=False)
+        if "categoria" in df.columns
         else pd.Series(dtype=float)
     )
     maior = float(categorias_valor.max()) if not categorias_valor.empty else 1.0
@@ -252,7 +270,7 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
             )
             .loc[:, [c for c in [
                 "municipio", "grupoModelo", "objeto", "fornecedor", "valor",
-                "categoriaCurta", "scoreRisco", "motivoRisco", *COLUNAS_SHAP, *COLUNAS_DESVIO,
+                "categoria", "scoreRisco", "motivoRisco", *COLUNAS_SHAP, *COLUNAS_DESVIO,
             ] if c in df.columns]]
             .head(20)
         )
@@ -278,6 +296,19 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
     }
 
 
+def ano_publicacao(df: pd.DataFrame) -> pd.Series:
+    """
+    Ano de publicação no PNCP de cada contrato, como texto ("2026"). É tirado
+    da própria data na hora de filtrar, sem virar coluna (repetiria
+    dataPublicacaoPncp). É a mesma data que o download usa para o período.
+    Não usamos `anoContrato`: ele tem erros de digitação dos órgãos (ex.:
+    2206, 15012026) e às vezes é o ano do processo.
+    """
+    if "dataPublicacaoPncp" not in df.columns:
+        return pd.Series("N/D", index=df.index)
+    return df["dataPublicacaoPncp"].dt.year.map(lambda v: str(int(v)) if pd.notna(v) else "N/D")
+
+
 def aplicar_filtros(
     df: pd.DataFrame,
     ano: Optional[str] = None,
@@ -290,14 +321,14 @@ def aplicar_filtros(
     filtrado = df
 
     if ano and ano != "Todos":
-        filtrado = filtrado[filtrado["ano"].astype(str) == str(ano)]
+        filtrado = filtrado[ano_publicacao(filtrado) == str(ano)]
 
     if municipio and not municipio.startswith("Todos"):
         alvo = padronizar_texto(municipio)
-        filtrado = filtrado[filtrado["municipioNorm"] == alvo]
+        filtrado = filtrado[filtrado["municipio"].map(padronizar_texto) == alvo]
 
     if categoria and not categoria.startswith("Todas"):
-        filtrado = filtrado[filtrado["categoriaCurta"] == categoria]
+        filtrado = filtrado[filtrado["categoria"] == categoria]
 
     if risco and risco != "Todos" and "risco" in filtrado.columns:
         filtrado = filtrado[filtrado["risco"] == risco]

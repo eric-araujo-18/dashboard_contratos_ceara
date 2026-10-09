@@ -8,6 +8,9 @@ normal (mesmo motivo dos demais).
 2) Modelo de ML (TF-IDF + regressão logística via SGD) treinado com os
    contratos que as regras conseguiram classificar, usado para
    reclassificar os "Outros" quando o modelo está confiante.
+
+O resultado fica numa única coluna, "categoria", com o nome da categoria.
+Os números (1 a 22) só existem aqui dentro, para as regras e o modelo.
 """
 from __future__ import annotations
 
@@ -20,7 +23,6 @@ from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import train_test_split
 
 from utils.regras_classificacao import (
-    CATEGORIAS_ESPECIFICAS,
     ORDEM_COMPRAS,
     ORDEM_SERVICOS,
     REGRAS_COMPRAS,
@@ -30,7 +32,7 @@ from utils.regras_classificacao import (
 
 ENUM_OUTROS = 22
 
-# Nomes curtos para dashboard (gráficos, filtros, painel do mapa)
+# Nome de cada categoria: é o que fica na coluna "categoria" e aparece no painel
 NOMES_CURTOS = {
     1: "Alimentos", 2: "Combustíveis", 3: "Equipamentos",
     4: "Material de expediente", 5: "Material de limpeza", 6: "Médico-hospitalar",
@@ -41,6 +43,8 @@ NOMES_CURTOS = {
     19: "Transporte escolar", 20: "Publicidade e eventos", 21: "Alienação de bens",
     22: "Outros",
 }
+_ENUM_POR_NOME = {nome: enum for enum, nome in NOMES_CURTOS.items()}
+NOME_OUTROS = NOMES_CURTOS[ENUM_OUTROS]
 
 # categoriaProcesso.id (PNCP) que já determina a categoria específica
 _CATEGORIA_DIRETA = {1: 15, 3: 18, 5: 15, 6: 11, 7: 10, 9: 10, 10: 17, 11: 21}
@@ -67,19 +71,14 @@ def _por_regras(texto: str, compiladas: dict, ordem: list) -> int:
     return ENUM_OUTROS
 
 
-def _preencher_nomes(df: pd.DataFrame) -> pd.DataFrame:
-    df["categoriaEspecifica"] = df["categoriaEspecificaEnum"].map(CATEGORIAS_ESPECIFICAS)
-    df["categoriaCurta"] = df["categoriaEspecificaEnum"].map(NOMES_CURTOS)
-    return df
-
-
 def classificar_por_regras(df: pd.DataFrame) -> pd.DataFrame:
     """
     Contratos sem categoriaProcesso.id (ou com id fora da lista) são
     classificados pelas regras gerais em vez de serem descartados.
     """
     df = df.copy()
-    df["objetoNormalizado"] = df["objeto"].map(normalizar_texto)
+    # texto normalizado só para as regras; não fica no DataFrame (repetiria "objeto")
+    textos = df["objeto"].map(normalizar_texto)
 
     if "categoriaProcesso.id" in df.columns:
         ids = pd.to_numeric(df["categoriaProcesso.id"], errors="coerce")
@@ -87,7 +86,7 @@ def classificar_por_regras(df: pd.DataFrame) -> pd.DataFrame:
         ids = pd.Series(np.nan, index=df.index)
 
     enums = []
-    for texto, cid in zip(df["objetoNormalizado"], ids):
+    for texto, cid in zip(textos, ids):
         if cid in _CATEGORIA_DIRETA:
             enum = _CATEGORIA_DIRETA[int(cid)]
         elif cid == _ID_COMPRAS:
@@ -100,9 +99,8 @@ def classificar_por_regras(df: pd.DataFrame) -> pd.DataFrame:
             enum = _por_regras(texto, _C_GERAIS, _ORDEM_GERAL)
         enums.append(enum)
 
-    df["categoriaEspecificaEnum"] = enums
-    df["categoriaOrigem"] = "regra"
-    return _preencher_nomes(df)
+    df["categoria"] = [NOMES_CURTOS[e] for e in enums]
+    return df
 
 
 def refinar_outros_com_ml(
@@ -117,14 +115,17 @@ def refinar_outros_com_ml(
     explica o motivo).
     """
     df = df.copy()
-    info = {"aplicado": False, "outros_antes": int((df["categoriaEspecificaEnum"] == ENUM_OUTROS).sum())}
+    textos = df["objeto"].map(normalizar_texto)
+    # o modelo treina com o número de cada categoria (1 a 22); na base fica o nome
+    enums = df["categoria"].map(_ENUM_POR_NOME)
+    info = {"aplicado": False, "outros_antes": int((enums == ENUM_OUTROS).sum())}
 
-    rotulados = df["categoriaEspecificaEnum"] != ENUM_OUTROS
+    rotulados = enums != ENUM_OUTROS
     outros = ~rotulados
 
-    contagem = df.loc[rotulados, "categoriaEspecificaEnum"].value_counts()
+    contagem = enums[rotulados].value_counts()
     classes_ok = contagem[contagem >= 5].index
-    treino = rotulados & df["categoriaEspecificaEnum"].isin(classes_ok)
+    treino = rotulados & enums.isin(classes_ok)
 
     if treino.sum() < minimo_treino or len(classes_ok) < 2:
         info["motivo"] = "Poucos contratos classificados para treinar o modelo."
@@ -133,7 +134,7 @@ def refinar_outros_com_ml(
         info["motivo"] = "Nenhum contrato em 'Outros'."
         return df, info
 
-    x, y = df.loc[treino, "objetoNormalizado"], df.loc[treino, "categoriaEspecificaEnum"]
+    x, y = textos[treino], enums[treino]
     x_tr, x_te, y_tr, y_te = train_test_split(
         x, y, test_size=0.2, random_state=42,
         stratify=y if y.value_counts().min() >= 2 else None,
@@ -153,21 +154,19 @@ def refinar_outros_com_ml(
     vetor, clf = novo_modelo()
     clf.fit(vetor.fit_transform(x), y)
 
-    proba = clf.predict_proba(vetor.transform(df.loc[outros, "objetoNormalizado"]))
+    proba = clf.predict_proba(vetor.transform(textos[outros]))
     confianca = proba.max(axis=1)
     previsto = clf.classes_[proba.argmax(axis=1)]
 
     aceitos = confianca >= limiar
     indices = df.index[outros][aceitos]
-    df.loc[indices, "categoriaEspecificaEnum"] = previsto[aceitos].astype(int)
-    df.loc[indices, "categoriaOrigem"] = "ml"
+    df.loc[indices, "categoria"] = [NOMES_CURTOS[int(e)] for e in previsto[aceitos]]
 
-    df = _preencher_nomes(df)
     info.update(
         aplicado=True,
         limiar=limiar,
         n_treino=int(treino.sum()),
         reclassificados=int(aceitos.sum()),
-        outros_depois=int((df["categoriaEspecificaEnum"] == ENUM_OUTROS).sum()),
+        outros_depois=int((df["categoria"] == NOME_OUTROS).sum()),
     )
     return df, info

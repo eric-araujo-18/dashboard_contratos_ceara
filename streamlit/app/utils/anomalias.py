@@ -100,7 +100,7 @@ SEMENTE = 42                  # mesma base -> mesmo resultado
 TOLERANCIA_VIGENCIA = 1.10       # vigência até 10% acima da mediana da categoria = normal
 
 VALOR_SIMBOLICO = 100.0          # contratos até R$ 100 viram alerta de cadastro
-ALIENACAO = "Alienação"          # prefixo de categoriaProcesso.nome
+ID_ALIENACAO = 11                # categoriaProcesso.id "Alienação de bens móveis/imóveis"
 
 ATRIBUTOS_ROTULO = {
     "valor": "Valor acima do padrão da categoria",
@@ -199,7 +199,7 @@ def _relacao_fornecedor(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Seri
     (muitos contratos com o mesmo fornecedor), não pela concentração.
     """
     valor = df["valor"].astype(float)
-    orgao = df.get("orgaoEntidade.cnpj", df["municipioNorm"]).astype(str)
+    orgao = (df["orgaoEntidade.cnpj"] if "orgaoEntidade.cnpj" in df.columns else df["municipio"]).astype(str)
     forn = df["niFornecedor"].fillna("").astype(str) if "niFornecedor" in df.columns else pd.Series("", index=df.index)
 
     total_orgao = valor.groupby(orgao).transform("sum")              # quanto o órgão contratou
@@ -234,8 +234,10 @@ def alertas_cadastro(df: pd.DataFrame) -> pd.Series:
     marcar(df["valor"] <= VALOR_SIMBOLICO, f"Valor simbólico (até R$ {VALOR_SIMBOLICO:.0f})")
     marcar(duracao < 0, "Vigência termina antes de começar")
     marcar((duracao <= 1) & tipo.ne("Empenho"), "Contrato com vigência de até 1 dia")
-    if "assinaturaAposPublicacao" in df.columns:
-        marcar(df["assinaturaAposPublicacao"].astype(bool), "Assinatura posterior à publicação no PNCP")
+    if {"dataAssinatura", "dataPublicacaoPncp"} <= set(df.columns):
+        # compara só o dia: a publicação tem hora, a assinatura não
+        apos = df["dataAssinatura"] > df["dataPublicacaoPncp"].dt.normalize()
+        marcar(apos, "Assinatura posterior à publicação no PNCP")
     return alertas.map("; ".join)
 
 
@@ -492,7 +494,6 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
       scoreIF        s(x) do Isolation Forest (maior = mais atípico)
       scoreRisco     percentil de s(x) dentro do grupo, 0-100
       risco          Alto / Médio / Baixo / Não avaliado
-      anomalia       risco == "Alto"
       motivoRisco    texto com os principais fatores (SHAP) ou o motivo de não avaliar
       grupoModelo    grupo de comparação
       alertaCadastro erros de cadastro (fora do risco)
@@ -503,7 +504,6 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     df["scoreRisco"] = 0.0
     df["scoreIF"] = np.nan
     df["risco"] = "Não avaliado"
-    df["anomalia"] = False
     df["motivoRisco"] = ""
     df["grupoModelo"] = _grupo_modelo(df)
     df["alertaCadastro"] = alertas_cadastro(df)
@@ -514,8 +514,8 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     if len(df) < MINIMO_CONTRATOS:
         return df, {"aplicado": False, "motivo": f"São necessários ao menos {MINIMO_CONTRATOS} contratos."}
 
-    categoria_proc = df.get("categoriaProcesso.nome", pd.Series("", index=df.index)).fillna("")
-    alienacao = categoria_proc.str.startswith(ALIENACAO)
+    categoria_proc = pd.to_numeric(df.get("categoriaProcesso.id", pd.Series(np.nan, index=df.index)), errors="coerce")
+    alienacao = categoria_proc.eq(ID_ALIENACAO)
     df.loc[alienacao, "motivoRisco"] = "Alienação: venda de bens pelo governo (receita, não despesa)"
 
     # A relação órgão x fornecedor olha a base inteira (todos os grupos), mas
@@ -535,7 +535,7 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
         municipal = grupo.startswith("Municipal")
         empenho = grupo.endswith("Empenho")
-        categoria = sub["categoriaEspecificaEnum"]
+        categoria = sub["categoria"]
 
         # --- valor (por habitante nos municipais) ---
         # Log porque os valores vão de centenas de reais a centenas de milhões:
@@ -651,8 +651,6 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             "avaliado": True,
             "atributos": atributos,
         }
-
-    df["anomalia"] = df["risco"] == "Alto"
 
     info = {
         "aplicado": True,

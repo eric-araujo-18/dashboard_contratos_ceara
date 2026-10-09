@@ -5,7 +5,7 @@ import streamlit as st
 
 from utils import pncp
 from utils.mapa import renderizar_mapa
-from utils.pipeline import aplicar_filtros, construir_agregados, executar_pipeline, fatias_shap
+from utils.pipeline import aplicar_filtros, ano_publicacao, construir_agregados, executar_pipeline, fatias_shap
 
 
 # =========================================================
@@ -787,7 +787,7 @@ with st.sidebar:
 
     html('<div class="filter-label">Ano de Publicação</div>')
     anos_opcoes = ["Todos"] + (
-        sorted(df_real["ano"].astype(str).unique(), reverse=True) if df_real is not None else ["2026", "2025"]
+        sorted(ano_publicacao(df_real).unique(), reverse=True) if df_real is not None else ["2026", "2025"]
     )
     ano = st.segmented_control(
         "Ano",
@@ -819,7 +819,7 @@ with st.sidebar:
 
     html('<div class="filter-label">Categoria</div>')
     categorias_opcoes = ["Todas as categorias"] + (
-        sorted(df_real["categoriaCurta"].dropna().unique()) if df_real is not None
+        sorted(df_real["categoria"].dropna().unique()) if df_real is not None
         else ["Serviços", "Aquisições", "Obras", "Outros"]
     )
     categoria = st.selectbox(
@@ -1065,7 +1065,7 @@ if not top_risco.empty:
                 "objeto": "Objeto do contrato",
                 "fornecedor": "Fornecedor",
                 "valor": "Valor (R$)",
-                "categoriaCurta": "Categoria",
+                "categoria": "Categoria",
                 "scoreRisco": "Índice de risco",
                 "motivoRisco": "Principais fatores (SHAP)",
             }
@@ -1133,7 +1133,7 @@ if not top_risco.empty:
                 "Contrato",
                 options=list(top_risco.index),
                 format_func=lambda i: (
-                    f"{top_risco.at[i, 'municipio']} · {top_risco.at[i, 'categoriaCurta']} · "
+                    f"{top_risco.at[i, 'municipio']} · {top_risco.at[i, 'categoria']} · "
                     f"{formatar_moeda(top_risco.at[i, 'valor'])}"
                 ),
                 label_visibility="collapsed",
