@@ -8,7 +8,7 @@ em contratos públicos dos municípios do Ceará.
 - Python, Pandas, NumPy
 - Streamlit
 - Scikit-learn (Isolation Forest, TF-IDF + regressão logística)
-- SHAP (TreeSHAP exato, implementado no projeto)
+- SHAP (biblioteca shap, com TreeSHAP exato próprio como reserva)
 - D3.js + GeoJSON
 - Dados: PNCP e IBGE (Censo 2022)
 
@@ -22,6 +22,7 @@ streamlit/
   app/utils/             pipeline: PNCP, tratamento, classificação, IBGE, anomalias, mapa
   app/components/        mapa em D3.js (componente com clique para filtrar)
   data/                  contratos, GeoJSON e população
+docs/                    metodologia da detecção de anomalias e do SHAP
 site/                    página de apresentação (Next.js)
 ```
 
@@ -46,18 +47,24 @@ aplicado, igual ao Streamlit Cloud.
   só é comparado com contratos parecidos.
 - **Fora do modelo** ("Não avaliado"): alienações (venda de bens pelo governo,
   que é receita) e grupos com menos de 50 contratos.
-- **Atributos** (desvio robusto por mediana/MAD, só o lado "acima do padrão"):
-  valor em relação à categoria (por habitante nos municipais), vigência em
-  relação à categoria (só contratos), concentração do valor do órgão no mesmo
-  fornecedor e número de contratos do fornecedor com o órgão.
+- **Atributos** (só o lado "acima do padrão" conta):
+  valor em relação à categoria (log, mediana/MAD; por habitante nos
+  municipais), vigência em relação à mediana da categoria (só contratos,
+  tolerância de 10%), concentração do valor do órgão no mesmo fornecedor
+  (acima da fatia média) e número de contratos do fornecedor com o órgão.
 - **Nível de risco**: percentil dentro do grupo. Alto = 5% mais atípicos,
   Médio = faixa seguinte de 10%. É um ranking de prioridade, não uma contagem
   de irregularidades.
-- **Explicação**: valores SHAP exatos (TreeSHAP "tree path dependent") da
-  profundidade média do Isolation Forest, calculados para os contratos Alto e
-  Médio.
+- **Explicação**: valores SHAP exatos (TreeSHAP "tree path dependent") do
+  caminho médio do Isolation Forest, calculados para os contratos Alto e
+  Médio pela biblioteca shap (com conferência de aditividade) ou, como
+  reserva, pela implementação própria; as duas dão o mesmo resultado.
 - **Erros de cadastro** (valor simbólico, datas inconsistentes, assinatura
   depois da publicação) aparecem num alerta separado, fora do risco.
 
 Atipicidade estatística não significa irregularidade: o dashboard indica
 onde vale olhar primeiro.
+
+A explicação completa (algoritmo, por que cada atributo, SHAP passo a passo,
+experimentos com os dados e limitações) está em
+[docs/deteccao_anomalias.md](docs/deteccao_anomalias.md).

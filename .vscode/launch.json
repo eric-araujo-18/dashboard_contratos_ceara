@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Streamlit (painel)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": ["run", "streamlit/app/app.py", "--server.headless", "true"],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Pipeline sem interface",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/streamlit/app/depurar.py",
+      "cwd": "${workspaceFolder}/streamlit/app",
+      "justMyCode": true
+    }
+  ]
+}

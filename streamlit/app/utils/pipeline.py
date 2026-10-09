@@ -34,7 +34,18 @@ COLUNAS_DESVIO = [f"desvio_{a}" for a in ATRIBUTOS_ROTULO]
 
 
 def fatias_shap(linha: pd.Series) -> list[tuple[str, float]]:
-    """[(rótulo, % da contribuição)] das contribuições SHAP positivas de um contrato."""
+    """
+    [(rótulo, % da contribuição)] das contribuições SHAP positivas de um
+    contrato: o gráfico "Por que este contrato foi apontado?".
+
+    Cada SHAP está em "níveis de árvore a menos" no caminho médio (positivo =
+    o atributo encurtou o caminho, deixou o contrato mais fácil de isolar).
+    Para virar porcentagem, divide cada contribuição positiva pela soma das
+    positivas: o resultado diz como o "empurrão para atípico" se divide entre
+    os atributos. As contribuições negativas (atributos que puxaram para
+    normal) ficam de fora, então as barras somam 100% mesmo quando algum
+    atributo jogou contra.
+    """
     positivos: dict[str, float] = {}
     for c in COLUNAS_SHAP:
         atributo = c.removeprefix("shap_")
@@ -50,7 +61,16 @@ def fatias_shap(linha: pd.Series) -> list[tuple[str, float]]:
 
 
 def fatores_globais(df: pd.DataFrame) -> list[tuple[str, float]]:
-    """Peso médio de cada fator (SHAP) entre os contratos de risco Alto."""
+    """
+    Peso médio de cada fator (SHAP) entre os contratos de risco Alto: o
+    gráfico "O que mais pesa nos contratos de risco alto".
+
+    Primeiro transforma o SHAP de cada contrato em fatias que somam 100%
+    (mesma regra de fatias_shap) e depois tira a média das fatias. Não soma
+    os SHAP brutos porque cada grupo tem o seu modelo, e o tamanho do caminho
+    de um modelo não é comparável com o de outro; as fatias são. Assim cada
+    contrato Alto pesa igual na média, qualquer que seja o grupo.
+    """
     if df.empty or "risco" not in df.columns:
         return []
     altos = df[df["risco"] == "Alto"]
