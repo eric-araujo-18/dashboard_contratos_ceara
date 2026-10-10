@@ -1078,7 +1078,7 @@ if not top_risco.empty:
             width="stretch",
             hide_index=True,
             column_config={
-                "Valor (R$)": st.column_config.NumberColumn(format="R$ %.2f"),
+                "Valor (R$)": st.column_config.NumberColumn(format="R$ %.f"),
                 "Índice de risco": st.column_config.NumberColumn(
                     format="%.1f",
                     help="Percentil de atipicidade dentro do grupo de comparação (esfera e tipo de documento).",
@@ -1190,5 +1190,5 @@ if df_real is not None and not alertas.empty:
             ),
             width="stretch",
             hide_index=True,
-            column_config={"Valor (R$)": st.column_config.NumberColumn(format="R$ %.2f")},
+            column_config={"Valor (R$)": st.column_config.NumberColumn(format="R$ %.f")},
         )

@@ -36,7 +36,7 @@ COLUNAS_SHAP = [f"shap_{a}" for a in ATRIBUTOS_ROTULO]
 # os 15 atributos do tratamento + a marca de valor corrigido (valorEmCentavos)
 # + categoria (recategorização) + população e
 # PIB (IBGE). É salva a cada análise, antes da detecção de anomalias.
-COLUNAS_BASE_FINAL = [*COLUNAS_MANTER.values(), "valorEmCentavos", "categoria", "populacao", "pib"]
+COLUNAS_BASE_FINAL = [*COLUNAS_MANTER.values(), "categoria", "populacao", "pib"]
 CSV_BASE_FINAL = DATA_DIR / "processed" / "contratos_tratados.csv"
 
 
@@ -184,6 +184,7 @@ def executar_pipeline(
     df["populacao"] = _populacao(df, pop_por_nome)
     # PIB do município (IBGE, em reais, ano mais recente publicado), pelo código IBGE; NaN se não houver
     df["pib"] = df["codigoIbge"].map(carregar_pib())
+    
     aviso_base_final = salvar_base_final(df)  # None se gravou
 
     avisar(0.70, "Procurando contratos atípicos (Isolation Forest)...")
