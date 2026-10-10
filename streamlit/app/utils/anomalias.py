@@ -232,6 +232,9 @@ def alertas_cadastro(df: pd.DataFrame) -> pd.Series:
             alertas[i].append(texto)
 
     marcar(df["valor"] <= VALOR_SIMBOLICO, f"Valor simbólico (até R$ {VALOR_SIMBOLICO:.0f})")
+    if "valorEmCentavos" in df.columns:
+        # o valor já foi dividido por 100 no tratamento; o alerta deixa a correção visível
+        marcar(df["valorEmCentavos"].astype(bool), "Valor publicado em centavos (corrigido: dividido por 100)")
     marcar(duracao < 0, "Vigência termina antes de começar")
     marcar((duracao <= 1) & tipo.ne("Empenho"), "Contrato com vigência de até 1 dia")
     if {"dataAssinatura", "dataPublicacaoPncp"} <= set(df.columns):

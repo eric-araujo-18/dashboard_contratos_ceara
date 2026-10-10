@@ -46,6 +46,25 @@ NOMES_CURTOS = {
 _ENUM_POR_NOME = {nome: enum for enum, nome in NOMES_CURTOS.items()}
 NOME_OUTROS = NOMES_CURTOS[ENUM_OUTROS]
 
+# Palavras que não dizem nada sobre o objeto ("CONTRATO 03", "CONTRATO CULTURA")
+_PALAVRAS_VAZIAS = {
+    "de", "da", "do", "das", "dos", "e", "a", "o", "as", "os", "para", "com", "em", "no", "na",
+    "nos", "nas", "ao", "aos", "contrato", "contratos", "termo", "aditivo", "ref",
+}
+MINIMO_PALAVRAS = 2
+
+
+def _descricao_informativa(texto: str) -> bool:
+    """
+    O objeto tem pelo menos MINIMO_PALAVRAS palavras que dizem algo sobre o que
+    foi contratado? Sem isso, o modelo de texto "chuta" com confiança alta a
+    categoria mais comum: nos testes, as 69 descrições com uma palavra ou
+    nenhuma ("CONTRATO CULTURA", "CONTRATO INFRA") foram todas para Obras e
+    engenharia. Essas ficam em "Outros".
+    """
+    palavras = [p for p in texto.split() if p not in _PALAVRAS_VAZIAS and not p.isdigit() and len(p) > 1]
+    return len(palavras) >= MINIMO_PALAVRAS
+
 # categoriaProcesso.id (PNCP) que já determina a categoria específica
 _CATEGORIA_DIRETA = {1: 15, 3: 18, 5: 15, 6: 11, 7: 10, 9: 10, 10: 17, 11: 21}
 _ID_COMPRAS, _ID_SERVICOS = 2, 8
@@ -111,7 +130,8 @@ def refinar_outros_com_ml(
     """
     Treina um classificador de texto com os contratos já classificados
     pelas regras e reclassifica os "Outros" quando a confiança do
-    modelo é >= limiar. Base pequena demais → não faz nada (info
+    modelo é >= limiar. Só entram os "Outros" com descrição informativa
+    (_descricao_informativa). Base pequena demais → não faz nada (info
     explica o motivo).
     """
     df = df.copy()
@@ -154,19 +174,25 @@ def refinar_outros_com_ml(
     vetor, clf = novo_modelo()
     clf.fit(vetor.fit_transform(x), y)
 
-    proba = clf.predict_proba(vetor.transform(textos[outros]))
-    confianca = proba.max(axis=1)
-    previsto = clf.classes_[proba.argmax(axis=1)]
+    # só os "Outros" cuja descrição diz o que foi contratado
+    candidatos = outros & textos.map(_descricao_informativa)
+    reclassificados = 0
+    if candidatos.any():
+        proba = clf.predict_proba(vetor.transform(textos[candidatos]))
+        confianca = proba.max(axis=1)
+        previsto = clf.classes_[proba.argmax(axis=1)]
 
-    aceitos = confianca >= limiar
-    indices = df.index[outros][aceitos]
-    df.loc[indices, "categoria"] = [NOMES_CURTOS[int(e)] for e in previsto[aceitos]]
+        aceitos = confianca >= limiar
+        indices = df.index[candidatos][aceitos]
+        df.loc[indices, "categoria"] = [NOMES_CURTOS[int(e)] for e in previsto[aceitos]]
+        reclassificados = int(aceitos.sum())
 
     info.update(
         aplicado=True,
         limiar=limiar,
         n_treino=int(treino.sum()),
-        reclassificados=int(aceitos.sum()),
+        sem_descricao=int((outros & ~candidatos).sum()),
+        reclassificados=reclassificados,
         outros_depois=int((df["categoria"] == NOME_OUTROS).sum()),
     )
     return df, info

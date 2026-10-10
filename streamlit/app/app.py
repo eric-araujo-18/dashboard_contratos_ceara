@@ -758,6 +758,8 @@ with st.sidebar:
 
                 n_contratos = resultado["agregados"]["kpis"]["contratos"]
                 st.success(f"Análise concluída: {formatar_num(n_contratos)} contratos processados.")
+                if resultado.get("aviso_base_final"):
+                    st.warning(resultado["aviso_base_final"])
 
                 info_anom = resultado["info_anomalias"]
                 if not info_anom.get("aplicado"):

@@ -33,18 +33,33 @@ ROTULO_FATOR = {
 COLUNAS_SHAP = [f"shap_{a}" for a in ATRIBUTOS_ROTULO]
 
 # Base de dados final do processamento (seção "Processamento de dados"):
-# os 15 atributos do tratamento + categoria (recategorização) + população e
+# os 15 atributos do tratamento + a marca de valor corrigido (valorEmCentavos)
+# + categoria (recategorização) + população e
 # PIB (IBGE). É salva a cada análise, antes da detecção de anomalias.
-COLUNAS_BASE_FINAL = [*COLUNAS_MANTER.values(), "categoria", "populacao", "pib"]
+COLUNAS_BASE_FINAL = [*COLUNAS_MANTER.values(), "valorEmCentavos", "categoria", "populacao", "pib"]
 CSV_BASE_FINAL = DATA_DIR / "processed" / "contratos_tratados.csv"
 
 
-def salvar_base_final(df: pd.DataFrame) -> None:
-    """Grava os 18 atributos da base final; a base original não é alterada."""
-    CSV_BASE_FINAL.parent.mkdir(parents=True, exist_ok=True)
+def salvar_base_final(df: pd.DataFrame) -> Optional[str]:
+    """
+    Grava os 18 atributos da base final; a base original não é alterada.
+    Retorna None se gravou, ou um aviso se não conseguiu. Gravar é um
+    complemento: se falhar, a análise continua. O caso mais comum é o
+    arquivo estar aberto no Excel, que no Windows bloqueia a escrita.
+    """
     colunas = [c for c in COLUNAS_BASE_FINAL if c in df.columns]
-    # utf-8-sig para o Excel abrir os acentos certos
-    df[colunas].to_csv(CSV_BASE_FINAL, index=False, encoding="utf-8-sig")
+    try:
+        CSV_BASE_FINAL.parent.mkdir(parents=True, exist_ok=True)
+        # utf-8-sig para o Excel abrir os acentos certos
+        df[colunas].to_csv(CSV_BASE_FINAL, index=False, encoding="utf-8-sig")
+    except OSError as erro:  # PermissionError (arquivo aberto), disco cheio, pasta só de leitura...
+        motivo = "o arquivo está aberto em outro programa (ex.: Excel)" if isinstance(erro, PermissionError) else str(erro)
+        return (
+            f"A análise foi concluída, mas a base tratada não foi salva em "
+            f"{CSV_BASE_FINAL.parent.name}/{CSV_BASE_FINAL.name}: {motivo}. "
+            f"Feche o arquivo e rode a análise de novo para atualizá-lo."
+        )
+    return None
 COLUNAS_DESVIO = [f"desvio_{a}" for a in ATRIBUTOS_ROTULO]
 
 
@@ -169,7 +184,7 @@ def executar_pipeline(
     df["populacao"] = _populacao(df, pop_por_nome)
     # PIB do município (IBGE, em reais, ano mais recente publicado), pelo código IBGE; NaN se não houver
     df["pib"] = df["codigoIbge"].map(carregar_pib())
-    salvar_base_final(df)
+    aviso_base_final = salvar_base_final(df)  # None se gravou
 
     avisar(0.70, "Procurando contratos atípicos (Isolation Forest)...")
     df, info_anomalias = detectar_anomalias(df)
@@ -185,6 +200,7 @@ def executar_pipeline(
         "log_tratamento": log_tratamento,
         "info_classificacao": info_classificacao,
         "info_anomalias": info_anomalias,
+        "aviso_base_final": aviso_base_final,
     }
 
 
