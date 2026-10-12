@@ -17,8 +17,9 @@ CSV do PNCP -> tratamento -> classificação -> população -> detecção de ano
                               (22 categorias)   (Censo 2022)
 ```
 
-A detecção recebe os contratos já limpos, com categoria e população do município, e
-devolve para cada contrato: nível de risco (Alto, Médio, Baixo ou Não avaliado), um
+A detecção recebe os contratos já limpos e com categoria, avalia os de órgãos
+**municipais, estaduais e federais** (cada esfera no seu próprio modelo) e devolve para
+cada contrato: nível de risco (Alto, Médio, Baixo ou Não avaliado), um
 índice de 0 a 100, o texto com os principais fatores (vindo do SHAP) e os alertas de
 cadastro.
 
@@ -83,21 +84,26 @@ cortes para ser isolado, e os 5% mais atípicos precisam de 7,6 ou menos.
    começar, contrato de até 1 dia e assinatura depois da publicação no PNCP: 298 contratos.
    São erros de preenchimento e seriam os pontos mais fáceis de isolar. Se entrassem no
    modelo, dominariam o topo do ranking.
-2. **Exclusões ("Não avaliado").** Alienações (venda de bens pelo governo, que é receita e
-   não despesa): 414 contratos. Grupos com menos de 50 contratos: 11 contratos.
-3. **Grupos de comparação.** Esfera do órgão x tipo de documento (contrato ou empenho).
-   Cada grupo tem o seu próprio modelo:
+2. **Exclusões ("Não avaliado").**
+   - Órgãos sem esfera definida no PNCP ("Não se aplica"): 211 contratos. É um grupo
+     pequeno e heterogêneo, sem um padrão comum de comparação.
+   - Alienações (venda de bens pelo governo, que é receita e não despesa): 414 contratos.
+   - Grupos com menos de 50 contratos: 7 contratos.
+3. **Grupos de comparação.** Esfera do órgão (municipal, estadual, federal) x tipo de
+   documento (contrato ou empenho). Na esfera municipal, todos os municípios entram
+   juntos, então cada contrato é comparado com os contratos da mesma categoria de todo o
+   estado. Cada grupo tem o seu próprio modelo, e como cada órgão pertence a uma só
+   esfera, os grupos não interferem uns nos outros: o resultado dos municípios é o mesmo
+   avaliando ou não as outras esferas.
 
-   | Grupo                    | Contratos | Atributos                                            |
-   |--------------------------|----------:|------------------------------------------------------|
-   | Municipal · Contrato     |    11.429 | valor por habitante, vigência, concentração, recorrência |
-   | Estadual · Empenho       |     5.277 | valor, concentração, recorrência                     |
-   | Estadual · Contrato      |     3.502 | valor, vigência, concentração, recorrência           |
-   | Federal · Empenho        |       983 | valor, concentração, recorrência                     |
-   | Federal · Contrato       |       501 | valor, vigência, concentração, recorrência           |
-   | Não se aplica · Contrato |       207 | valor, vigência, concentração, recorrência           |
-   | Municipal · Empenho      |         7 | não avaliado (menos de 50)                           |
-   | Não se aplica · Empenho  |         4 | não avaliado (menos de 50)                           |
+   | Grupo                    | Contratos | Atributos                                  |
+   |--------------------------|----------:|--------------------------------------------|
+   | Municipal · Contrato     |    11.429 | valor, vigência, concentração, recorrência |
+   | Estadual · Empenho       |     5.277 | valor, concentração, recorrência           |
+   | Estadual · Contrato      |     3.502 | valor, vigência, concentração, recorrência |
+   | Federal · Empenho        |       983 | valor, concentração, recorrência           |
+   | Federal · Contrato       |       501 | valor, vigência, concentração, recorrência |
+   | Municipal · Empenho      |         7 | não avaliado (menos de 50)                 |
 
 4. **Atributos** calculados por grupo (seção 4).
 5. **Um Isolation Forest por grupo**: 300 árvores, 256 contratos por árvore, semente 42
@@ -108,7 +114,8 @@ cortes para ser isolado, e os 5% mais atípicos precisam de 7,6 ou menos.
    sklearn, que só fixaria um limiar sobre o score.
 7. **SHAP** para os contratos Alto e Médio, que vira o texto "Principais fatores" (seção 5).
 
-Resultado: 21.899 contratos avaliados, 1.099 Alto e 2.186 Médio.
+Resultado: 21.692 contratos avaliados, 1.090 Alto e 2.167 Médio (no grupo Municipal ·
+Contrato: 572 Alto e 1.143 Médio).
 
 > O nível de risco é uma **fila de prioridade para auditoria**, não uma estimativa de
 > quantos contratos são irregulares. Por construção, 5% de cada grupo serão sempre
@@ -153,11 +160,11 @@ Cada atributo precisava cumprir quatro critérios:
   desvio-padrão (para dados normais).
 - Categorias com menos de 5 contratos no grupo usam a mediana e a escala do grupo inteiro.
 
-### 4.2 Valor por habitante, nos municipais: ponto de atenção
+### 4.2 Por que o valor não é dividido pela população
 
-A ideia era comparar municípios de tamanhos diferentes: R$ 1 milhão em Fortaleza
-(2,4 milhões de habitantes) não é o mesmo que R$ 1 milhão num município de 5 mil. **Os
-dados não confirmam essa premissa para contratos individuais:**
+Uma versão anterior usava o valor **por habitante** nos municipais, com a ideia de que
+R$ 1 milhão em Fortaleza (2,4 milhões de habitantes) não é o mesmo que R$ 1 milhão num
+município de 5 mil. **Os dados não confirmam essa premissa para contratos individuais:**
 
 | Medida (Municipal · Contrato)                         | Correlação de Spearman com a população |
 |-------------------------------------------------------|------:|
@@ -170,23 +177,27 @@ habitantes e R$ 40,0 mil nos com menos de 20 mil. Municípios maiores fazem **ma
 contratos, não contratos **maiores**. Dividir o valor de um contrato pela população cria
 um viés de porte:
 
-| Faixa de população | % do grupo | % do Alto, por habitante (atual) | % do Alto, valor sem dividir |
-|--------------------|-----------:|---------------------------------:|-----------------------------:|
-| até 20 mil         | 25,4       | 29,9                             | 24,3                         |
-| 20 a 50 mil        | 34,0       | 47,6                             | 42,5                         |
-| 50 a 100 mil       | 28,1       | 17,1                             | 21,7                         |
-| 100 a 500 mil      | 9,0        | 3,1                              | 7,7                          |
-| mais de 500 mil    | 3,4        | 2,3                              | 3,8                          |
+| Faixa de população | % do grupo | % do Alto, por habitante (anterior) | % do Alto, valor absoluto (atual) |
+|--------------------|-----------:|------------------------------------:|----------------------------------:|
+| até 20 mil         | 25,4       | 31,6                                | 23,8                              |
+| 20 a 50 mil        | 34,0       | 47,2                                | 42,8                              |
+| 50 a 100 mil       | 28,1       | 15,9                                | 22,2                              |
+| 100 a 500 mil      | 9,0        | 3,0                                 | 7,3                               |
+| mais de 500 mil    | 3,4        | 2,3                                 | 3,8                               |
 
-Com o valor por habitante, municípios de 100 a 500 mil habitantes têm um terço da
-presença esperada no Alto. Sem a divisão, as proporções ficam próximas das da base.
+Com o valor por habitante, municípios de 100 a 500 mil habitantes tinham um terço da
+presença esperada no Alto. Com o valor absoluto, as proporções ficam próximas das da base.
 
-**Recomendação:** usar o valor sem dividir pela população também nos municipais (a
-comparação com a categoria continua valendo). O valor por habitante faz sentido para
-agregados, como o total por município no mapa, e não para cada contrato. **Isso não foi
-alterado no código**, porque é uma decisão de metodologia. Para mudar, basta fazer
-`usa_habitante = False` em `detectar_anomalias`. Com a mudança, 457 dos 572 contratos Alto
-do grupo continuam Alto.
+Por categoria, o porte pesa em algumas compras e não em outras. Em Obras e engenharia a
+mediana vai de R$ 115 mil (até 20 mil hab.) a R$ 890 mil (100 a 500 mil hab.), cerca de
+8x. Em Material de limpeza e Alimentos não há relação, e Fortaleza tem as menores
+medianas. Em nenhum caso o efeito chega perto da proporção de população (cerca de 90x),
+que é o que a divisão pressupunha.
+
+**Decisão:** o valor entra sem dividir pela população, comparado com a mediana da mesma
+categoria. A população continua na base para o mapa, onde o valor por habitante faz
+sentido como agregado do município. Com a mudança, 442 dos 572 contratos Alto (77%)
+continuaram Alto.
 
 ### 4.3 Vigência (só contratos)
 
@@ -238,14 +249,14 @@ vezes_media = fatia / (1 / nº de fornecedores do órgão) = fatia x nº de forn
 
 Correlação de Spearman entre os atributos que entram no modelo (Municipal · Contrato):
 
-|              | valor/hab | vigência | concentração | recorrência |
+|              | valor | vigência | concentração | recorrência |
 |--------------|------:|------:|------:|------:|
-| valor/hab    | 1,00  | 0,04  | 0,38  | -0,13 |
-| vigência     | 0,04  | 1,00  | 0,03  | -0,06 |
-| concentração | 0,38  | 0,03  | 1,00  | 0,29  |
-| recorrência  | -0,13 | -0,06 | 0,29  | 1,00  |
+| valor        | 1,00  | 0,05  | 0,37  | -0,11 |
+| vigência     | 0,05  | 1,00  | 0,03  | -0,06 |
+| concentração | 0,37  | 0,03  | 1,00  | 0,29  |
+| recorrência  | -0,11 | -0,06 | 0,29  | 1,00  |
 
-A maior correlação é 0,38 (contratos caros tendem a aumentar a fatia do fornecedor, o que
+A maior correlação é 0,37 (contratos caros tendem a aumentar a fatia do fornecedor, o que
 é esperado). Nenhum atributo repete o outro.
 
 ### 4.7 Só o lado de cima conta (corte em zero)
@@ -255,9 +266,10 @@ muito caro. Mas valor baixo, vigência curta ou pouca concentração não são r
 sobrepreço ou direcionamento. Por isso todo atributo passa por `clip(lower=0)`: abaixo do
 típico vira 0 (normal).
 
-No experimento sem esse corte (desvio absoluto, dos dois lados), 71% dos contratos Alto do
-grupo Municipal · Contrato teriam valor por habitante **abaixo** da mediana da categoria.
-Com o corte, são 18% (contratos que estão no Alto por outros motivos, como concentração).
+No experimento sem esse corte (desvio absoluto, dos dois lados; medido na versão com
+valor por habitante), 71% dos contratos Alto do grupo Municipal · Contrato tinham valor
+**abaixo** da mediana da categoria. Com o corte, são 24% (contratos que estão no Alto por
+outros motivos, como concentração ou recorrência).
 
 ### 4.8 Um modelo por grupo
 
@@ -352,6 +364,10 @@ se a biblioteca não estiver instalada ou falhar.
 
 ### 5.6 Exemplo real
 
+> Exemplo calculado na versão anterior, que usava o valor por habitante. A mecânica do
+> SHAP (base, soma das contribuições, fatias e texto) é a mesma na versão atual; hoje o
+> atributo de valor aparece como "Valor Nx a mediana da categoria".
+
 Contrato de Chorozinho (20.163 habitantes), categoria Obras e engenharia: construção de
 escola de 13 salas (padrão FNDE), R$ 9.575.135,99. Grupo Municipal · Contrato.
 
@@ -387,8 +403,8 @@ s(x) = 2^(-6,399 / 10,245)    =  0,649         -> percentil 98,3 no grupo -> Alt
 - **"O que mais pesa nos contratos de risco alto" (`fatores_globais`):** primeiro converte
   o SHAP de cada contrato Alto em fatias que somam 100% e depois tira a média. Não soma os
   SHAP brutos porque cada grupo tem o seu modelo, e caminhos de modelos diferentes não são
-  comparáveis; as fatias são. Na base inteira: concentração 44,4%, valor 29,7%,
-  recorrência 15,9% e vigência 10,0%.
+  comparáveis; as fatias são. Na base inteira (versão anterior, com todas as esferas):
+  concentração 44,4%, valor 29,7%, recorrência 15,9% e vigência 10,0%.
 - **Como ler as porcentagens:** são a divisão do "empurrão para atípico" entre os
   atributos. Não são probabilidade de irregularidade.
 
@@ -404,6 +420,8 @@ s(x) = 2^(-6,399 / 10,245)    =  0,649         -> percentil 98,3 no grupo -> Alt
 | 4 | **Sinal do SHAP da biblioteca decidido por correlação** | Heurística: não funcionava com um contrato só e dependia da variação dos dados. | Conferência exata da eficiência (base + soma = caminho médio) antes de inverter o sinal. |
 | 5 | **`requirements.txt` com `shap==0.42.1`** | Essa versão não tem pacote para Python 3.12+ e foi compilada para numpy 1.x. Uma instalação limpa falharia (ou cairia sempre na implementação própria). O venv do projeto tinha a 0.52.0. | `shap==0.52.0`, a versão testada. |
 | 6 | **`config.toml` fora da raiz** (`streamlit/.streamlit/`) | O README manda rodar a partir da raiz e o Streamlit Cloud só lê `.streamlit/config.toml` na raiz: o tema não era aplicado. | Movido para `.streamlit/config.toml`. |
+| 7 | **Valor por habitante nos municipais** | Viés de porte: municípios de 20 a 50 mil habitantes tinham 47% do Alto sendo 34% do grupo; os de 100 a 500 mil, 3% sendo 9% (4.2). | Valor absoluto comparado com a categoria. |
+| 8 | **Grupo "Não se aplica" avaliado** | 207 contratos de órgãos sem esfera definida no PNCP formavam um grupo próprio, pequeno e heterogêneo. | Avaliadas só as esferas municipal, estadual e federal (`ESFERAS_AVALIADAS`); "Não se aplica" fica "Não avaliado", com o motivo "Fora do escopo". |
 
 Os totais não mudam (o percentil fixa 5% Alto e 10% Médio por grupo). Dos 1.099 contratos
 Alto antes da revisão, 810 (74%) continuam Alto.
@@ -412,7 +430,11 @@ Alto antes da revisão, 810 (74%) continuam Alto.
 
 ## 7. Limitações e pontos de atenção
 
-- **Valor por habitante:** ver 4.2. É a principal decisão em aberto.
+- **Grupos federais menores.** Federal · Contrato (501) e Federal · Empenho (983) passam
+  do mínimo de 50, mas o Alto deles (5% de cada grupo) sai de poucos contratos.
+- **Porte em obras e combustíveis.** Nessas categorias, cidades maiores fazem contratos
+  um pouco maiores (4.2), e tendem a aparecer um pouco mais no Alto. Uma alternativa
+  futura é comparar com a mediana da mesma categoria e da mesma faixa de população.
 - **Atípico não é irregular.** O modelo aponta o que foge do padrão. Uma obra grande e
   legítima pode ser atípica. O painel indica onde olhar primeiro.
 - **O Alto é sempre 5% de cada grupo**, mesmo numa base sem irregularidades.

@@ -882,7 +882,8 @@ if df_real is not None:
 
     data_municipios = agregados_mapa["data_municipios"]
     describe_municipios = agregados_mapa["describe_municipios"]
-    populacao_municipios = agregados_mapa["populacao_municipios"]
+    # população e PIB vêm das colunas da base analisada (inteira, sem filtros)
+    populacao_municipios = resultado.get("indicadores_municipios", {})
 
     kpis_valores = [
         ("Contratos", formatar_num(agregados["kpis"]["contratos"])),
@@ -1081,7 +1082,7 @@ if not top_risco.empty:
                 "Valor (R$)": st.column_config.NumberColumn(format="R$ %.f"),
                 "Índice de risco": st.column_config.NumberColumn(
                     format="%.1f",
-                    help="Percentil de atipicidade dentro do grupo de comparação (esfera e tipo de documento).",
+                    help="Percentil de atipicidade dentro do grupo de comparação (esfera do órgão e tipo de documento).",
                 ),
                 "Comparado com": st.column_config.TextColumn(
                     help="Cada grupo tem o seu próprio modelo: o contrato só é comparado com contratos parecidos.",

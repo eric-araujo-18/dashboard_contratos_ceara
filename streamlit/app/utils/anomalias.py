@@ -34,12 +34,18 @@ NÃO muda o resultado. O que muda é (a) transformação não linear (log),
 
 Decisões de modelagem
 ---------------------
-1. Um modelo por grupo comparável (esfera do órgão x tipo de documento).
-   O Isolation Forest chama de atípico o que é RARO no conjunto de treino.
-   Num modelo único, grupos minoritários (ex.: órgãos federais) viravam
-   "anômalos" só por serem diferentes da maioria. Empenhos também não têm
-   vigência comparável à dos contratos.
+1. Um modelo por grupo comparável: esfera do órgão (ESFERAS_AVALIADAS:
+   municipal, estadual, federal) x tipo de documento (contrato x nota de
+   empenho). O Isolation Forest chama de atípico o que é RARO no treino: num
+   modelo único, grupos minoritários (ex.: órgãos federais) viravam
+   "anômalos" só por serem diferentes da maioria, e empenhos não têm vigência
+   comparável à dos contratos. Dentro da esfera municipal, todos os
+   municípios entram juntos, então um contrato é comparado com os contratos
+   da mesma categoria de todo o estado. Como cada órgão pertence a uma só
+   esfera, os grupos não interferem uns nos outros.
 2. Fora do modelo ("Não avaliado"):
+   - órgãos sem esfera definida no PNCP ("Não se aplica", "Não informada"):
+     grupo pequeno e heterogêneo, sem um padrão comum de comparação;
    - alienações (venda de bens pelo governo: é receita, não despesa);
    - grupos com menos de MINIMO_CONTRATOS contratos para comparar.
 3. Atributos só com sentido de RISCO (sobrepreço, direcionamento), todos
@@ -47,9 +53,12 @@ Decisões de modelagem
    Sem isso, o Isolation Forest (que é simétrico) também apontaria
    contratos baratos ou curtos demais, que não são risco de sobrepreço.
      - valor:        desvio robusto (mediana/MAD) do log do valor dentro da
-                     categoria do contrato. Nos municipais, usa o valor POR
-                     HABITANTE (IBGE), para comparar municípios de tamanhos
-                     diferentes.
+                     categoria do contrato. Valor absoluto, sem dividir pela
+                     população: o valor do contrato quase não acompanha o
+                     porte do município (Spearman 0,065; o contrato mediano
+                     de Fortaleza é do tamanho do de uma cidade de 20 mil
+                     habitantes), e o valor por habitante empurrava os
+                     municípios pequenos para o topo do risco.
      - vigencia:     log da razão entre a duração e a mediana da categoria,
                      contando só o que passar de 10% acima da mediana (só
                      contratos; empenhos valem até 31/12 e não têm vigência
@@ -101,10 +110,10 @@ TOLERANCIA_VIGENCIA = 1.10       # vigência até 10% acima da mediana da catego
 
 VALOR_SIMBOLICO = 100.0          # contratos até R$ 100 viram alerta de cadastro
 ID_ALIENACAO = 11                # categoriaProcesso.id "Alienação de bens móveis/imóveis"
+ESFERAS_AVALIADAS = ("Municipal", "Estadual", "Federal")  # "Não se aplica" fica de fora
 
 ATRIBUTOS_ROTULO = {
     "valor": "Valor acima do padrão da categoria",
-    "valor_habitante": "Valor por habitante acima do padrão da categoria",
     "vigencia": "Vigência mais longa que o padrão da categoria",
     "concentracao": "Concentração no mesmo fornecedor",
     "recorrencia": "Muitos contratos com o mesmo fornecedor",
@@ -163,6 +172,7 @@ def _grupo_modelo(df: pd.DataFrame) -> pd.Series:
     Grupo de comparação de cada contrato: "esfera · documento"
     (ex.: "Municipal · Contrato", "Estadual · Empenho"). Cada grupo tem o seu
     próprio Isolation Forest, então um contrato só concorre com parecidos.
+    Só os grupos das ESFERAS_AVALIADAS são avaliados.
     """
     esfera = df.get("esfera", pd.Series("Não informada", index=df.index)).fillna("Não informada")
     tipo = df.get("tipoContrato.nome", pd.Series("", index=df.index)).fillna("")
@@ -438,8 +448,6 @@ def _descrever(atributo: str, linha: pd.Series) -> str:
     """
     if atributo == "valor":
         return f"Valor {_num(linha['_razao'])}x a mediana da categoria"
-    if atributo == "valor_habitante":
-        return f"Valor por habitante {_num(linha['_razao'])}x a mediana da categoria"
     if atributo == "vigencia":
         return (
             f"Vigência de {_num(linha['_duracao'], 0)} dias, "
@@ -511,52 +519,59 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         df[f"shap_{atributo}"] = np.nan    # contribuição SHAP (só Alto e Médio)
         df[f"desvio_{atributo}"] = np.nan  # valor do atributo usado no modelo (>= 0)
 
-    if len(df) < MINIMO_CONTRATOS:
-        return df, {"aplicado": False, "motivo": f"São necessários ao menos {MINIMO_CONTRATOS} contratos."}
+    esfera = df.get("esfera", pd.Series("Não informada", index=df.index)).fillna("Não informada")
+    fora_escopo = ~esfera.isin(ESFERAS_AVALIADAS)
+    df.loc[fora_escopo, "motivoRisco"] = (
+        "Fora do escopo: órgão sem esfera definida no PNCP (" + esfera[fora_escopo] + ")"
+    )
 
     categoria_proc = pd.to_numeric(df.get("categoriaProcesso.id", pd.Series(np.nan, index=df.index)), errors="coerce")
     alienacao = categoria_proc.eq(ID_ALIENACAO)
     df.loc[alienacao, "motivoRisco"] = "Alienação: venda de bens pelo governo (receita, não despesa)"
 
-    # A relação órgão x fornecedor olha a base inteira (todos os grupos), mas
-    # sem as alienações: elas são receita e inflariam o "total do órgão".
-    fatia_forn, vezes_media_forn, n_contratos_forn = _relacao_fornecedor(df.loc[~alienacao])
+    avaliavel = ~fora_escopo & ~alienacao
+    info_base = {"fora_escopo": int((fora_escopo & ~alienacao).sum()), "alienacoes": int(alienacao.sum())}
+    if avaliavel.sum() < MINIMO_CONTRATOS:
+        return df, {
+            "aplicado": False,
+            "motivo": f"São necessários ao menos {MINIMO_CONTRATOS} contratos de órgãos municipais, estaduais ou federais.",
+            **info_base,
+        }
+
+    # A relação órgão x fornecedor olha todos os contratos avaliáveis (contratos
+    # e empenhos), mas sem as alienações: elas são receita e inflariam o
+    # "total do órgão". Cada órgão pertence a uma só esfera, então o recorte
+    # de escopo não muda as contas de nenhum órgão municipal.
+    fatia_forn, vezes_media_forn, n_contratos_forn = _relacao_fornecedor(df.loc[avaliavel])
     duracao = _duracao_dias(df)
-    populacao = pd.to_numeric(df.get("populacao"), errors="coerce")
 
     grupos_info = {}
     metodos_shap: set[str] = set()
-    for grupo, idx in df.index[~alienacao].groupby(df.loc[~alienacao, "grupoModelo"]).items():
+    for grupo, idx in df.index[avaliavel].groupby(df.loc[avaliavel, "grupoModelo"]).items():
         sub = df.loc[idx]
         if len(sub) < MINIMO_CONTRATOS:
             df.loc[idx, "motivoRisco"] = "Grupo com poucos contratos para comparação"
             grupos_info[grupo] = {"contratos": len(sub), "avaliado": False}
             continue
 
-        municipal = grupo.startswith("Municipal")
         empenho = grupo.endswith("Empenho")
         categoria = sub["categoria"]
 
-        # --- valor (por habitante nos municipais) ---
+        # --- valor ---
         # Log porque os valores vão de centenas de reais a centenas de milhões:
         # na escala original, um único contrato gigante ocuparia quase todo o
         # intervalo [mínimo, máximo] e os cortes aleatórios do Isolation Forest
         # quase nunca separariam os contratos "só" 10x acima do típico. No log,
         # 10x acima é a mesma distância em qualquer faixa de valor.
+        # Valor absoluto, sem dividir pela população (ver docstring do módulo).
         log_valor = np.log(sub["valor"].astype(float).clip(lower=1.0))
-        pop = populacao.loc[idx]
-        usa_habitante = municipal and pop.notna().mean() > 0.9
-        if usa_habitante:
-            # log(valor / população): Fortaleza (2,4 mi hab.) e um município de
-            # 5 mil habitantes passam a ser comparáveis
-            log_valor = log_valor - np.log(pop.fillna(pop.median()).clip(lower=1.0))
         # Comparado com a CATEGORIA do contrato: uma obra é naturalmente mais
         # cara que material de expediente; sem isso, toda obra seria "atípica"
         z_valor, mediana_valor = _z_robusto(log_valor, categoria)
 
-        atributos = ["valor_habitante" if usa_habitante else "valor"]
+        atributos = ["valor"]
         # clip(lower=0): abaixo do típico vira 0 = "normal" (só um lado é risco)
-        colunas = {atributos[0]: z_valor.clip(lower=0)}
+        colunas = {"valor": z_valor.clip(lower=0)}
 
         # --- vigência (só contratos) ---
         # Empenhos ficam de fora: 98% deles terminam em 31/12 (valem até o fim
@@ -660,6 +675,7 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         "alto": int((df["risco"] == "Alto").sum()),
         "medio": int((df["risco"] == "Médio").sum()),
         "alertas_cadastro": int((df["alertaCadastro"] != "").sum()),
+        **info_base,
         "grupos": grupos_info,
         "metodo_shap": " + ".join(sorted(metodos_shap)) if metodos_shap else None,
     }

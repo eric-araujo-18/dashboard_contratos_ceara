@@ -368,6 +368,8 @@ function formatPercent(fraction) {
 
 /* ====================================================
    POPULAÇÃO E PIB (IBGE)
+   Vêm das colunas populacao e pib da base analisada: município sem
+   contratos na base não tem esses dados, e o mapa mostra só o total.
 ==================================================== */
 
 function getIbgeByFeature(feature) {
@@ -447,6 +449,7 @@ function updateInfoPanel(nomeMunicipio) {
 
     const info = describeFromStreamlit[nomeMunicipio];
     const total = dataFromStreamlit[nomeMunicipio] || 0;
+    const dadosIbge = getIbgeByMunicipio(nomeMunicipio);
     const populacao = getPopulacaoByMunicipio(nomeMunicipio);
     const pib = getPibByMunicipio(nomeMunicipio);
 
@@ -458,12 +461,15 @@ function updateInfoPanel(nomeMunicipio) {
         ? `${formatNumber(info.count)} contratos`
         : "Sem contratos";
 
-    let stats = statRow("População IBGE", populacaoTexto);
-    stats += statRow(
-        rotuloPib(getIbgeByMunicipio(nomeMunicipio), "PIB IBGE"),
-        pib ? formatCompactCurrency(pib) : "Não encontrado"
-    );
-    stats += statRow("Contratado / PIB", textoContratadoPib(total, pib));
+    let stats = "";
+    if (dadosIbge) {
+        stats += statRow("População IBGE", populacaoTexto);
+        stats += statRow(
+            rotuloPib(dadosIbge, "PIB IBGE"),
+            pib ? formatCompactCurrency(pib) : "Não encontrado"
+        );
+        stats += statRow("Contratado / PIB", textoContratadoPib(total, pib));
+    }
 
     if (info) {
         stats += statRow("Quantidade", formatNumber(info.count));
@@ -592,6 +598,7 @@ function renderChart() {
             const nome = d.properties.name;
             const valor = dataFromStreamlit[nome] || 0;
             const info = describeFromStreamlit[nome];
+            const dadosIbge = getIbgeByFeature(d);
             const populacao = getPopulacaoByFeature(d);
             const pib = getPibByFeature(d);
 
@@ -603,10 +610,10 @@ function renderChart() {
                 .style("display", "block")
                 .html(`
                     <strong>${nome}</strong>
-                    População: ${populacaoTexto}<br>
-                    ${rotuloPib(getIbgeByFeature(d), "PIB")}: ${pib ? formatCompactCurrency(pib) : "Não encontrado"}<br>
+                    ${dadosIbge ? `População: ${populacaoTexto}<br>
+                    ${rotuloPib(dadosIbge, "PIB")}: ${pib ? formatCompactCurrency(pib) : "Não encontrado"}<br>` : ""}
                     Total: ${formatCurrency(valor)}<br>
-                    Contratado / PIB: ${textoContratadoPib(valor, pib)}<br>
+                    ${dadosIbge ? `Contratado / PIB: ${textoContratadoPib(valor, pib)}<br>` : ""}
                     ${info
                         ? `Contratos: ${formatNumber(info.count)}`
                         : "Sem contratos"}

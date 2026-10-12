@@ -203,25 +203,3 @@ def carregar_pib() -> dict:
 def ano_pib() -> str | None:
     """Ano do PIB usado por carregar_pib() (ex.: "2023")."""
     return _pib_atual()["ano"]
-
-
-def populacao_por_codigo(
-    populacao_por_nome: dict, pib_por_codigo: dict | None = None, ano_pib: str | None = None
-) -> dict:
-    """
-    Formato que o mapa_ceara.html espera:
-    {codigo_ibge: {"populacao": n, "pib": x, "pibAno": "2023"}}.
-    O PIB (em reais) só entra quando informado (carregar_pib). Inclui também
-    o código de 6 dígitos (sem dígito verificador), por segurança.
-    """
-    pib_por_codigo = pib_por_codigo or {}
-    saida = {}
-    for dados in populacao_por_nome.values():
-        codigo = str(dados["codigo_ibge"])
-        item = {"populacao": int(dados["populacao"])}
-        if codigo in pib_por_codigo:
-            item["pib"] = float(pib_por_codigo[codigo])
-            item["pibAno"] = ano_pib
-        saida[codigo] = item
-        saida[codigo[:6]] = item
-    return saida

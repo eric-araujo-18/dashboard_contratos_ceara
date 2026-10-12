@@ -14,18 +14,15 @@ import pandas as pd
 
 from utils.anomalias import ATRIBUTOS_ROTULO, detectar_anomalias
 from utils.classificador import classificar_por_regras, refinar_outros_com_ml
-from utils.ibge import ano_pib, carregar_pib, carregar_populacao, populacao_por_codigo
+from utils.ibge import ano_pib, carregar_pib, carregar_populacao
 from utils.config import DATA_DIR
 from utils.mapa import carregar_geojson
 from utils.tratamento import COLUNAS_MANTER, padronizar_texto, tratar_contratos
 
 Progresso = Callable[[float, str], None]
 
-# "valor" e "valor_habitante" são o mesmo conceito (o segundo é usado nos
-# municipais), então aparecem juntos no gráfico geral de fatores
 ROTULO_FATOR = {
     "valor": "Valor acima do padrão da categoria",
-    "valor_habitante": "Valor acima do padrão da categoria",
     "vigencia": ATRIBUTOS_ROTULO["vigencia"],
     "concentracao": ATRIBUTOS_ROTULO["concentracao"],
     "recorrencia": ATRIBUTOS_ROTULO["recorrencia"],
@@ -33,9 +30,9 @@ ROTULO_FATOR = {
 COLUNAS_SHAP = [f"shap_{a}" for a in ATRIBUTOS_ROTULO]
 
 # Base de dados final do processamento (seção "Processamento de dados"):
-# os 15 atributos do tratamento + a marca de valor corrigido (valorEmCentavos)
-# + categoria (recategorização) + população e
-# PIB (IBGE). É salva a cada análise, antes da detecção de anomalias.
+# os 15 atributos do tratamento + categoria (recategorização) + população e
+# PIB (IBGE, exibidos no mapa). É salva a cada análise, antes da detecção de
+# anomalias.
 COLUNAS_BASE_FINAL = [*COLUNAS_MANTER.values(), "categoria", "populacao", "pib"]
 CSV_BASE_FINAL = DATA_DIR / "processed" / "contratos_tratados.csv"
 
@@ -158,6 +155,35 @@ def _populacao(df: pd.DataFrame, pop_por_nome: dict) -> pd.Series:
     return df["codigoIbge"].map(por_codigo).fillna(por_nome)
 
 
+def indicadores_municipios(df: pd.DataFrame, ano_do_pib: Optional[str]) -> dict:
+    """
+    População e PIB de cada município, lidos das colunas `populacao` e `pib`
+    da própria base (gravadas no enriquecimento), no formato que o mapa
+    espera: {codigo_ibge: {"populacao": n, "pib": x, "pibAno": "2023"}}.
+
+    Recebe a base inteira, antes dos filtros: a população de um município não
+    muda com o filtro de ano ou de risco. Município sem contratos na base fica
+    de fora, e o mapa mostra só "Sem contratos". Inclui também o código de 6
+    dígitos (sem dígito verificador), por segurança.
+    """
+    if not {"codigoIbge", "populacao", "pib"} <= set(df.columns):
+        return {}
+    # first() ignora NaN; todas as linhas de um município têm os mesmos valores
+    por_municipio = df.groupby("codigoIbge")[["populacao", "pib"]].first()
+    saida = {}
+    for codigo, linha in por_municipio.iterrows():
+        item = {}
+        if pd.notna(linha["populacao"]):
+            item["populacao"] = int(linha["populacao"])
+        if pd.notna(linha["pib"]):
+            item["pib"] = float(linha["pib"])
+            item["pibAno"] = ano_do_pib
+        if item:
+            saida[str(codigo)] = item
+            saida[str(codigo)[:6]] = item
+    return saida
+
+
 def executar_pipeline(
     df_bruto: pd.DataFrame,
     progresso: Optional[Progresso] = None,
@@ -184,20 +210,23 @@ def executar_pipeline(
     df["populacao"] = _populacao(df, pop_por_nome)
     # PIB do município (IBGE, em reais, ano mais recente publicado), pelo código IBGE; NaN se não houver
     df["pib"] = df["codigoIbge"].map(carregar_pib())
-    
+    # o mapa mostra a população e o PIB destas duas colunas, e não direto do IBGE
+    municipios_ibge = indicadores_municipios(df, ano_pib())
+
     aviso_base_final = salvar_base_final(df)  # None se gravou
 
     avisar(0.70, "Procurando contratos atípicos (Isolation Forest)...")
     df, info_anomalias = detectar_anomalias(df)
 
     avisar(0.92, "Montando o dashboard...")
-    agregados = construir_agregados(df, pop_por_nome)
+    agregados = construir_agregados(df)
 
     avisar(1.0, "Concluído.")
 
     return {
         "df": df,
         "agregados": agregados,
+        "indicadores_municipios": municipios_ibge,
         "log_tratamento": log_tratamento,
         "info_classificacao": info_classificacao,
         "info_anomalias": info_anomalias,
@@ -205,13 +234,12 @@ def executar_pipeline(
     }
 
 
-def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -> dict:
+def construir_agregados(df: pd.DataFrame) -> dict:
     """
     A partir do DataFrame já tratado/classificado (com ou sem anomalias
     detectadas), monta:
       - data_municipios: {nome oficial do GeoJSON: soma do valor}
       - describe_municipios: {nome oficial: describe() do valor}
-      - populacao_municipios: {codigo_ibge: {"populacao": n, "pib": x, "pibAno": ano}} (IBGE, para o mapa)
       - kpis: contratos, valor_total, municipios (com contratos), anomalias
       - categorias: top categorias por valor [(nome, largura da barra %, fatia do total %)]
       - top_risco: contratos com risco Alto, ordenados por scoreRisco (com SHAP)
@@ -219,14 +247,10 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
       - alertas_cadastro: contratos com possíveis erros de cadastro
     Funciona também com um df vazio (após aplicar filtros, por exemplo).
     """
-    pop_por_nome = pop_por_nome if pop_por_nome is not None else carregar_populacao()
-    populacao_municipios = populacao_por_codigo(pop_por_nome, carregar_pib(), ano_pib())
-
     if df.empty:
         return {
             "data_municipios": {},
             "describe_municipios": {},
-            "populacao_municipios": populacao_municipios,
             "kpis": {
                 "contratos": 0,
                 "valor_total": 0.0,
@@ -304,7 +328,6 @@ def construir_agregados(df: pd.DataFrame, pop_por_nome: Optional[dict] = None) -
     return {
         "data_municipios": data_municipios,
         "describe_municipios": describe_municipios,
-        "populacao_municipios": populacao_municipios,
         "kpis": kpis,
         "categorias": categorias,
         "top_risco": top_risco,

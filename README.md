@@ -44,12 +44,14 @@ aplicado, igual ao Streamlit Cloud.
 
 - **Um Isolation Forest por grupo comparável**: esfera do órgão (municipal,
   estadual, federal) x tipo de documento (contrato ou empenho). Cada contrato
-  só é comparado com contratos parecidos.
-- **Fora do modelo** ("Não avaliado"): alienações (venda de bens pelo governo,
-  que é receita) e grupos com menos de 50 contratos.
+  só é comparado com contratos parecidos; na esfera municipal, todos os
+  municípios entram juntos.
+- **Fora do modelo** ("Não avaliado"): órgãos sem esfera definida no PNCP
+  ("Não se aplica"), alienações (venda de bens pelo governo, que é receita) e
+  grupos com menos de 50 contratos.
 - **Atributos** (só o lado "acima do padrão" conta):
-  valor em relação à categoria (log, mediana/MAD; por habitante nos
-  municipais), vigência em relação à mediana da categoria (só contratos,
+  valor em relação à categoria (log, mediana/MAD; valor absoluto, sem dividir
+  pela população), vigência em relação à mediana da categoria (só contratos,
   tolerância de 10%), concentração do valor do órgão no mesmo fornecedor
   (acima da fatia média) e número de contratos do fornecedor com o órgão.
 - **Nível de risco**: percentil dentro do grupo. Alto = 5% mais atípicos,
