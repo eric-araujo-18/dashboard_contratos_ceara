@@ -242,7 +242,8 @@ def construir_agregados(df: pd.DataFrame) -> dict:
       - describe_municipios: {nome oficial: describe() do valor}
       - kpis: contratos, valor_total, municipios (com contratos), anomalias
       - categorias: top categorias por valor [(nome, largura da barra %, fatia do total %)]
-      - top_risco: contratos com risco Alto, ordenados por scoreRisco (com SHAP)
+      - contratos_risco: todos os contratos, do mais atípico ao menos atípico
+        (com SHAP); o dashboard separa por nível de risco e pagina
       - fatores_globais: peso médio de cada fator (SHAP) nos contratos Alto
       - alertas_cadastro: contratos com possíveis erros de cadastro
     Funciona também com um df vazio (após aplicar filtros, por exemplo).
@@ -258,7 +259,7 @@ def construir_agregados(df: pd.DataFrame) -> dict:
                 "anomalias": None,
             },
             "categorias": [],
-            "top_risco": pd.DataFrame(),
+            "contratos_risco": pd.DataFrame(),
             "fatores_globais": [],
             "alertas_cadastro": pd.DataFrame(),
         }
@@ -302,21 +303,21 @@ def construir_agregados(df: pd.DataFrame) -> dict:
     ]
 
     if "risco" in df.columns:
-        top_risco = (
-            df[df["risco"] == "Alto"]
-            # percentil no grupo primeiro; o score bruto só desempata
-            .sort_values(
-                ["scoreRisco", "scoreIF"] if "scoreIF" in df.columns else ["scoreRisco"],
+        contratos_risco = (
+            # percentil no grupo primeiro; o score bruto e o valor só desempatam
+            # (nos "Não avaliado", sem score, a ordem fica pelo valor)
+            df.sort_values(
+                [c for c in ["scoreRisco", "scoreIF", "valor"] if c in df.columns],
                 ascending=False,
+                na_position="last",
             )
             .loc[:, [c for c in [
-                "municipio", "grupoModelo", "objeto", "fornecedor", "valor",
+                "risco", "municipio", "grupoModelo", "objeto", "fornecedor", "valor",
                 "categoria", "scoreRisco", "motivoRisco", *COLUNAS_SHAP, *COLUNAS_DESVIO,
             ] if c in df.columns]]
-            .head(20)
         )
     else:
-        top_risco = pd.DataFrame()
+        contratos_risco = pd.DataFrame()
 
     if "alertaCadastro" in df.columns:
         alertas = df[df["alertaCadastro"] != ""].loc[:, [c for c in [
@@ -330,7 +331,7 @@ def construir_agregados(df: pd.DataFrame) -> dict:
         "describe_municipios": describe_municipios,
         "kpis": kpis,
         "categorias": categorias,
-        "top_risco": top_risco,
+        "contratos_risco": contratos_risco,
         "fatores_globais": fatores_globais(df),
         "alertas_cadastro": alertas,
     }

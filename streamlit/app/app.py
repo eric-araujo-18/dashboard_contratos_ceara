@@ -898,7 +898,7 @@ if df_real is not None:
     ]
 
     categorias = agregados["categorias"]
-    top_risco = agregados["top_risco"]
+    contratos_risco = agregados["contratos_risco"]
     fatores = agregados["fatores_globais"]
     alertas = agregados["alertas_cadastro"]
     badge_classe, badge_texto = "real", f"{formatar_num(len(df_filtrado))} contratos analisados"
@@ -918,7 +918,7 @@ else:
 
     categorias = []
 
-    top_risco = pd.DataFrame()
+    contratos_risco = pd.DataFrame()
     fatores = []
     alertas = pd.DataFrame()
     badge_classe, badge_texto = "exemplo", "Nenhuma análise carregada — escolha uma base e clique em Fazer análise"
@@ -1040,29 +1040,89 @@ with categoria_col:
 
 
 # =========================================================
-# TOP CONTRATOS COM MAIOR RISCO
+# CONTRATOS POR NÍVEL DE RISCO (com paginação)
 # =========================================================
 
-if not top_risco.empty:
+NIVEIS_RISCO = ["Alto", "Médio", "Baixo", "Não avaliado"]
+DESCRICAO_NIVEL = {
+    "Alto": "5% mais atípicos de cada grupo de comparação, do mais atípico ao menos atípico",
+    "Médio": "Faixa seguinte de 10% (índice de 85 a 95), do mais atípico ao menos atípico",
+    "Baixo": "Demais contratos avaliados pelo modelo, do mais atípico ao menos atípico",
+    "Não avaliado": "Fora do modelo: alienações, órgãos sem esfera definida e grupos pequenos",
+}
+OPCOES_POR_PAGINA = [10, 20, 50, 100]
+
+nivel = None
+pagina_risco = pd.DataFrame()  # contratos da página atual (a explicação SHAP usa os mesmos)
+
+if not contratos_risco.empty:
+
+    contagem = contratos_risco["risco"].value_counts()
+    niveis = [n for n in NIVEIS_RISCO if contagem.get(n, 0) > 0]
+    # nova análise ou outro filtro lateral de risco: volta para o nível mais alto disponível;
+    # fora isso, o nível escolhido continua valendo enquanto existir com os filtros atuais
+    if st.session_state.get("risco_contexto") != (id(df_real), risco):
+        st.session_state["risco_contexto"] = (id(df_real), risco)
+        st.session_state["risco_nivel"] = niveis[0]
+    if st.session_state.get("risco_nivel") not in niveis:
+        st.session_state["risco_nivel"] = niveis[0]
+    nivel = st.session_state["risco_nivel"]
+
+    linhas = contratos_risco[contratos_risco["risco"] == nivel]
+    st.session_state.setdefault("risco_por_pagina", 20)
+    por_pagina = st.session_state["risco_por_pagina"]
+    n_paginas = max(1, -(-len(linhas) // por_pagina))
+
+    # outra lista (nova análise, outro nível, filtro ou tamanho de página): volta para a página 1
+    lista = (id(df_real), nivel, por_pagina, ano, municipio, categoria, esfera, risco)
+    if st.session_state.get("risco_lista") != lista:
+        st.session_state["risco_lista"] = lista
+        st.session_state["risco_pagina"] = 1
+    pagina = min(max(int(st.session_state.get("risco_pagina", 1)), 1), n_paginas)
+    st.session_state["risco_pagina"] = pagina
+
+    inicio = (pagina - 1) * por_pagina
+    pagina_risco = linhas.iloc[inicio:inicio + por_pagina]
 
     with st.container(key="card_risco"):
 
         html(
-            """
+            f"""
             <div class="card-header">
             <div>
-            <div class="card-title">Contratos com Maior Risco</div>
-            <div class="card-subtitle">Apontados pelo Isolation Forest, do mais atípico ao menos atípico</div>
+            <div class="card-title">Contratos por Nível de Risco</div>
+            <div class="card-subtitle">{DESCRICAO_NIVEL[nivel]}</div>
             </div>
             <div class="tag risco">Isolation Forest</div>
             </div>
             """
         )
 
-        tabela = top_risco.drop(
-            columns=[c for c in top_risco.columns if c.startswith(("shap_", "desvio_"))]
-        ).rename(
+        st.segmented_control(
+            "Nível de risco",
+            options=niveis,
+            required=True,
+            format_func=lambda n: f"{n} ({formatar_num(int(contagem[n]))})",
+            key="risco_nivel",
+            label_visibility="collapsed",
+        )
+
+        tabela = pagina_risco.drop(
+            columns=[c for c in pagina_risco.columns if c == "risco" or c.startswith(("shap_", "desvio_"))]
+        )
+        # posição do contrato na lista do nível (continua de uma página para a outra)
+        tabela.insert(0, "posicao", range(inicio + 1, inicio + len(tabela) + 1))
+        if nivel == "Baixo":
+            # o SHAP só é calculado para Alto e Médio: a coluna de fatores ficaria vazia
+            tabela = tabela.drop(columns=["motivoRisco"], errors="ignore")
+        if nivel == "Não avaliado":
+            # sem índice (o modelo não rodou); o motivo diz por que ficou de fora
+            tabela = tabela.drop(columns=["scoreRisco"], errors="ignore")
+
+        coluna_motivo = "Motivo" if nivel == "Não avaliado" else "Principais fatores (SHAP)"
+        tabela = tabela.rename(
             columns={
+                "posicao": "Nº",
                 "municipio": "Município",
                 "grupoModelo": "Comparado com",
                 "objeto": "Objeto do contrato",
@@ -1070,7 +1130,7 @@ if not top_risco.empty:
                 "valor": "Valor (R$)",
                 "categoria": "Categoria",
                 "scoreRisco": "Índice de risco",
-                "motivoRisco": "Principais fatores (SHAP)",
+                "motivoRisco": coluna_motivo,
             }
         )
 
@@ -1079,6 +1139,7 @@ if not top_risco.empty:
             width="stretch",
             hide_index=True,
             column_config={
+                "Nº": st.column_config.NumberColumn(format="%d", width="small"),
                 "Valor (R$)": st.column_config.NumberColumn(format="R$ %.f"),
                 "Índice de risco": st.column_config.NumberColumn(
                     format="%.1f",
@@ -1091,8 +1152,23 @@ if not top_risco.empty:
                     help="Atributos que mais pesaram, com a fatia da contribuição SHAP entre colchetes.",
                     width="large",
                 ),
+                "Motivo": st.column_config.TextColumn(
+                    help="Por que o contrato ficou fora do modelo.",
+                    width="large",
+                ),
             },
         )
+
+        col_info, col_pagina, col_tamanho = st.columns([4, 1, 1], vertical_alignment="bottom")
+        with col_info:
+            st.caption(
+                f"Mostrando {formatar_num(inicio + 1)}–{formatar_num(inicio + len(pagina_risco))} "
+                f"de {formatar_num(len(linhas))} contratos · página {pagina} de {n_paginas}"
+            )
+        with col_pagina:
+            st.number_input("Página", min_value=1, max_value=n_paginas, step=1, key="risco_pagina")
+        with col_tamanho:
+            st.selectbox("Por página", OPCOES_POR_PAGINA, key="risco_por_pagina")
 
 
 # =========================================================
@@ -1111,7 +1187,10 @@ def barras_html(itens, classe="") -> str:
     )
 
 
-if not top_risco.empty:
+# o SHAP só existe para Alto e Médio; a explicação usa os contratos da página atual
+explicaveis = pagina_risco if nivel in ("Alto", "Médio") else pd.DataFrame()
+
+if not contratos_risco.empty and contratos_risco["risco"].isin(["Alto", "Médio"]).any():
 
     with st.container(key="card_shap"):
 
@@ -1132,28 +1211,49 @@ if not top_risco.empty:
         with col_contrato:
             html('<div class="shap-subtitulo">Por que este contrato foi apontado?</div>')
 
-            escolhido = st.selectbox(
-                "Contrato",
-                options=list(top_risco.index),
-                format_func=lambda i: (
-                    f"{top_risco.at[i, 'municipio']} · {top_risco.at[i, 'categoria']} · "
-                    f"{formatar_moeda(top_risco.at[i, 'valor'])}"
-                ),
-                label_visibility="collapsed",
-                key="shap_contrato",
-            )
-            linha = top_risco.loc[escolhido]
+            if explicaveis.empty:
+                html(
+                    """
+                    <div class="shap-nota">
+                    Os valores SHAP são calculados só para os contratos de risco Alto e Médio.
+                    Escolha um desses níveis na tabela acima para ver a explicação de um contrato.
+                    </div>
+                    """
+                )
+            else:
+                opcoes = list(explicaveis.index)
+                # mesmo número da coluna "Nº" da tabela
+                posicao = {i: inicio + k + 1 for k, i in enumerate(opcoes)}
+                # outra página ou outro nível: começa pelo primeiro contrato da página
+                if st.session_state.get("shap_contrato") not in opcoes:
+                    st.session_state["shap_contrato"] = opcoes[0]
+                escolhido = st.selectbox(
+                    "Contrato",
+                    options=opcoes,
+                    format_func=lambda i: (
+                        f"Nº {posicao[i]} · {explicaveis.at[i, 'municipio']} · "
+                        f"{explicaveis.at[i, 'categoria']} · {formatar_moeda(explicaveis.at[i, 'valor'])}"
+                    ),
+                    label_visibility="collapsed",
+                    key="shap_contrato",
+                )
+                linha = explicaveis.loc[escolhido]
+                faixa = (
+                    "está entre os 5% mais atípicos desse grupo"
+                    if linha.get("risco") == "Alto"
+                    else "está na faixa seguinte de 10% (índice de 85 a 95) desse grupo"
+                )
 
-            html(f'<div class="bars">{barras_html(fatias_shap(linha), "shap")}</div>')
-            html(
-                f"""
-                <div class="shap-nota">
-                <b>{linha.get("motivoRisco", "")}</b><br>
-                Índice {str(linha.get("scoreRisco", "")).replace(".", ",")} dentro do grupo
-                “{linha.get("grupoModelo", "")}”: está entre os contratos mais atípicos desse grupo.
-                </div>
-                """
-            )
+                html(f'<div class="bars">{barras_html(fatias_shap(linha), "shap")}</div>')
+                html(
+                    f"""
+                    <div class="shap-nota">
+                    <b>{linha.get("motivoRisco", "")}</b><br>
+                    Índice {str(linha.get("scoreRisco", "")).replace(".", ",")} dentro do grupo
+                    “{linha.get("grupoModelo", "")}”: {faixa}.
+                    </div>
+                    """
+                )
 
         with col_geral:
             html('<div class="shap-subtitulo">O que mais pesa nos contratos de risco alto</div>')
