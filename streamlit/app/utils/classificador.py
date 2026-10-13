@@ -7,7 +7,9 @@ normal (mesmo motivo dos demais).
 1) Regras por palavra-chave (utils/regras_classificacao.py).
 2) Modelo de ML (TF-IDF + regressão logística via SGD) treinado com os
    contratos que as regras conseguiram classificar, usado para
-   reclassificar os "Outros" quando o modelo está confiante.
+   reclassificar os "Outros" quando o modelo está confiante. Os
+   coeficientes do modelo dão as palavras-chave de cada categoria
+   (palavras_chave).
 
 O resultado fica numa única coluna, "categoria", com o nome da categoria.
 Os números (1 a 22) só existem aqui dentro, para as regras e o modelo.
@@ -122,6 +124,24 @@ def classificar_por_regras(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def palavras_chave(vetor: TfidfVectorizer, clf: SGDClassifier, n: int = 10) -> dict[str, list[str]]:
+    """
+    Termos de maior coeficiente de cada categoria na regressão logística: as
+    palavras-chave que o modelo aprendeu com os contratos rotulados. Só entram
+    termos com coeficiente positivo (os que puxam o texto PARA a categoria).
+    Retorna {nome da categoria: [termo, ...]}, do termo mais forte ao mais fraco.
+    """
+    termos = vetor.get_feature_names_out()
+    coeficientes = clf.coef_
+    if coeficientes.shape[0] == 1:  # duas classes: o sklearn guarda só a da classe positiva
+        coeficientes = np.vstack([-coeficientes[0], coeficientes[0]])
+    saida = {}
+    for enum, coef in zip(clf.classes_, coeficientes):
+        topo = np.argsort(coef)[::-1][:n]
+        saida[NOMES_CURTOS[int(enum)]] = [str(termos[i]) for i in topo if coef[i] > 0]
+    return saida
+
+
 def refinar_outros_com_ml(
     df: pd.DataFrame,
     limiar: float = 0.60,
@@ -194,5 +214,6 @@ def refinar_outros_com_ml(
         sem_descricao=int((outros & ~candidatos).sum()),
         reclassificados=reclassificados,
         outros_depois=int((df["categoria"] == NOME_OUTROS).sum()),
+        palavras_chave=palavras_chave(vetor, clf),
     )
     return df, info

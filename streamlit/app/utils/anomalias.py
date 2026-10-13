@@ -446,12 +446,15 @@ def _descrever(atributo: str, linha: pd.Series) -> str:
     lê o painel: "Valor 12,3x a mediana da categoria", "Vigência de 730 dias".
     As colunas com "_" na frente são montadas em detectar_anomalias.
     """
+    # categorias com menos de MINIMO_CONTRATOS_CATEGORIA contratos no grupo
+    # são comparadas com a mediana do grupo inteiro (_z_robusto)
+    referencia = linha.get("_referencia", "da categoria")
     if atributo == "valor":
-        return f"Valor {_num(linha['_razao'])}x a mediana da categoria"
+        return f"Valor {_num(linha['_razao'])}x a mediana {referencia}"
     if atributo == "vigencia":
         return (
             f"Vigência de {_num(linha['_duracao'], 0)} dias, "
-            f"{_num(linha['_razao_vigencia'])}x a mediana da categoria"
+            f"{_num(linha['_razao_vigencia'])}x a mediana {referencia}"
         )
     if atributo == "concentracao":
         vezes = linha["_vezes_media"]
@@ -651,8 +654,12 @@ def detectar_anomalias(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             # valores originais, para o texto do motivo ficar legível
             apoio = df.loc[idx_sinal, [f"shap_{a}" for a in atributos] + [f"desvio_{a}" for a in atributos]].copy()
             # razão para a mediana da categoria (nas categorias com menos de 5
-            # contratos, a referência é a mediana do grupo)
+            # contratos, a referência é a mediana do grupo, e o texto diz isso)
             apoio["_razao"] = np.exp((log_valor - mediana_valor).loc[idx_sinal])
+            n_categoria = categoria.groupby(categoria).transform("size").loc[idx_sinal]
+            apoio["_referencia"] = np.where(
+                n_categoria < MINIMO_CONTRATOS_CATEGORIA, "do grupo", "da categoria"
+            )
             apoio["_duracao"] = duracao.loc[idx_sinal].fillna(0)
             if razao_vigencia is not None:
                 apoio["_razao_vigencia"] = razao_vigencia.loc[idx_sinal]

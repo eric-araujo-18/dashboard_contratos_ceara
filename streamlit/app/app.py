@@ -1,4 +1,6 @@
+import re
 from datetime import date
+from html import escape
 
 import pandas as pd
 import streamlit as st
@@ -526,6 +528,40 @@ html(
     .st-key-card_risco div[data-testid="stDataFrame"] {
         margin-top: 18px;
     }
+
+    .risco-detalhe {
+        padding: 16px 18px;
+        border-left: 3px solid #d98e04;
+        border-radius: 10px;
+        background: rgba(251, 188, 44, 0.08);
+        color: var(--text) !important;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .stApp .risco-detalhe-topo {
+        color: var(--muted) !important;
+        font-family: var(--font-data);
+        font-size: 11px;
+    }
+
+    .stApp .risco-detalhe-valor {
+        margin: 4px 0 6px 0;
+        font-family: var(--font-title);
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    .stApp .risco-detalhe-rotulo {
+        margin-top: 10px;
+        color: var(--muted) !important;
+        font-family: var(--font-data);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .risco-detalhe ul { margin: 2px 0 0 0; padding-left: 18px; }
 
     /* =====================================================
        EXPLICAÇÃO DO MODELO (SHAP)
@@ -1120,6 +1156,19 @@ if not contratos_risco.empty:
             tabela = tabela.drop(columns=["scoreRisco"], errors="ignore")
 
         coluna_motivo = "Motivo" if nivel == "Não avaliado" else "Principais fatores (SHAP)"
+        if "motivoRisco" in tabela.columns:
+            # "Valor 76x ... [70%]; Fornecedor ... [30%]" -> separador e porcentagem mais legíveis
+            tabela["motivoRisco"] = (
+                tabela["motivoRisco"].fillna("")
+                .str.replace(r"\s*\[(\d+%)\]", r" (\1)", regex=True)
+                .str.replace("; ", "  ·  ", regex=False)
+            )
+        # quem, quanto e por quê primeiro; os textos longos (objeto) e o grupo no fim
+        ordem = [
+            "posicao", "scoreRisco", "municipio", "categoria", "valor", "motivoRisco",
+            "fornecedor", "objeto", "grupoModelo",
+        ]
+        tabela = tabela[[c for c in ordem if c in tabela.columns]]
         tabela = tabela.rename(
             columns={
                 "posicao": "Nº",
@@ -1134,30 +1183,81 @@ if not contratos_risco.empty:
             }
         )
 
-        st.dataframe(
+        selecao = st.dataframe(
             tabela,
             width="stretch",
             hide_index=True,
+            # outra página/nível/filtro: chave nova, para a seleção não apontar para outra linha
+            key=f"tabela_risco_{hash(lista)}_{pagina}",
+            on_select="rerun",
+            selection_mode="single-row",
             column_config={
-                "Nº": st.column_config.NumberColumn(format="%d", width="small"),
-                "Valor (R$)": st.column_config.NumberColumn(format="R$ %.f"),
-                "Índice de risco": st.column_config.NumberColumn(
+                "Nº": st.column_config.NumberColumn(format="%d", width=40),
+                "Índice de risco": st.column_config.ProgressColumn(
+                    "Índice",
                     format="%.1f",
+                    min_value=0,
+                    max_value=100,
+                    width=90,
                     help="Percentil de atipicidade dentro do grupo de comparação (esfera do órgão e tipo de documento).",
                 ),
-                "Comparado com": st.column_config.TextColumn(
-                    help="Cada grupo tem o seu próprio modelo: o contrato só é comparado com contratos parecidos.",
-                ),
+                "Município": st.column_config.TextColumn(width=120),
+                "Categoria": st.column_config.TextColumn(width=110),
+                "Valor (R$)": st.column_config.NumberColumn(format="localized", width=120),
                 "Principais fatores (SHAP)": st.column_config.TextColumn(
-                    help="Atributos que mais pesaram, com a fatia da contribuição SHAP entre colchetes.",
+                    help="Atributos que mais pesaram, com a fatia da contribuição SHAP entre parênteses.",
                     width="large",
                 ),
                 "Motivo": st.column_config.TextColumn(
                     help="Por que o contrato ficou fora do modelo.",
                     width="large",
                 ),
+                "Fornecedor": st.column_config.TextColumn(width="medium"),
+                "Objeto do contrato": st.column_config.TextColumn(width="medium"),
+                "Comparado com": st.column_config.TextColumn(
+                    width=140,
+                    help=(
+                        "Esfera do órgão e tipo de documento. O contrato é comparado com os contratos "
+                        "da mesma categoria nesse grupo, em todos os municípios do CE."
+                    ),
+                ),
             },
         )
+
+        linhas_sel = selecao.selection.rows
+        if linhas_sel:
+            sel = pagina_risco.iloc[linhas_sel[0]]
+            # leva o contrato escolhido para a explicação SHAP (só quando a seleção muda,
+            # para não desfazer uma escolha feita direto na caixa da explicação)
+            if nivel in ("Alto", "Médio") and st.session_state.get("risco_sel") != sel.name:
+                st.session_state["shap_contrato"] = sel.name
+            st.session_state["risco_sel"] = sel.name
+
+            motivos = [m.strip() for m in str(sel.get("motivoRisco") or "").split(";") if m.strip()]
+            motivos = [re.sub(r"\s*\[(\d+%)\]", r" (\1 do peso)", m) for m in motivos]
+            itens = "".join(f"<li>{escape(m)}</li>" for m in motivos)
+            indice = (
+                f" · índice {str(sel['scoreRisco']).replace('.', ',')}"
+                if pd.notna(sel.get("scoreRisco")) else ""
+            )
+            html(
+                f"""
+                <div class="risco-detalhe">
+                <div class="risco-detalhe-topo">
+                Nº {inicio + linhas_sel[0] + 1} · {escape(str(sel.get("municipio", "")))} ·
+                {escape(str(sel.get("categoria", "")))} · {escape(str(sel.get("grupoModelo", "")))}{indice}
+                </div>
+                <div class="risco-detalhe-valor">{formatar_moeda(sel["valor"])}</div>
+                <div class="risco-detalhe-rotulo">Fornecedor</div>
+                <div>{escape(str(sel.get("fornecedor", "")))}</div>
+                <div class="risco-detalhe-rotulo">Objeto</div>
+                <div>{escape(str(sel.get("objeto", "")))}</div>
+                {f'<div class="risco-detalhe-rotulo">{coluna_motivo}</div><ul>{itens}</ul>' if itens else ""}
+                </div>
+                """
+            )
+        else:
+            st.caption("Clique em uma linha para ver o contrato completo.")
 
         col_info, col_pagina, col_tamanho = st.columns([4, 1, 1], vertical_alignment="bottom")
         with col_info:
